@@ -171,7 +171,7 @@ pub fn decompress(
                     h.method,
                     rf.len(),
                     &mut source,
-                    total,
+                    total as u64,
                     0,
                     chunks - 1,
                     &mut out,
@@ -276,12 +276,13 @@ fn decode_chunks<F: ForkBytes>(
     method: u32,
     fork_len: usize,
     fork: &mut F,
-    total: usize,
+    total: u64,
     first: usize,
     last: usize,
     out: &mut Vec<u8>,
 ) -> Result<(), F::Error> {
-    let chunks = total.div_ceil(CHUNK);
+    let chunks = usize::try_from(total.div_ceil(CHUNK as u64))
+        .map_err(|_| DecmpfsError::BadChunk { method, chunk: first })?;
     let ranges = chunk_ranges(method, fork_len, fork, chunks)?;
     for i in first..=last {
         let (start, end) = ranges
@@ -289,7 +290,7 @@ fn decode_chunks<F: ForkBytes>(
             .copied()
             .ok_or(DecmpfsError::BadChunk { method, chunk: i })?;
         let blob = fork.read(start, end.saturating_sub(start))?;
-        let want = CHUNK.min(total - i * CHUNK);
+        let want = (CHUNK as u64).min(total - (i as u64) * CHUNK as u64) as usize;
         decode_chunk(method, i, &blob, want, out)?;
     }
     Ok(())
@@ -306,35 +307,41 @@ pub fn decompress_range<F: ForkBytes>(
     offset: usize,
     len: usize,
 ) -> Result<Vec<u8>, F::Error> {
+    decompress_range_u64(decmpfs_xattr, fork_len, fork, offset as u64, len)
+}
+
+/// Ranged decoder with 64-bit file positions on every process architecture.
+pub fn decompress_range_u64<F: ForkBytes>(
+    decmpfs_xattr: &[u8],
+    fork_len: usize,
+    fork: &mut F,
+    offset: u64,
+    len: usize,
+) -> Result<Vec<u8>, F::Error> {
     let h = DecmpfsHeader::parse(decmpfs_xattr)?;
-    let total = usize::try_from(h.uncompressed_size)
-        .map_err(|_| DecmpfsError::Parse(short(8, 8, decmpfs_xattr.len())))?;
+    let total = h.uncompressed_size;
     if offset >= total || len == 0 {
         return Ok(Vec::new());
     }
-    let end = offset.saturating_add(len).min(total);
+    let end = offset.saturating_add(len as u64).min(total);
+    let bad = || DecmpfsError::Parse(short(0, len, fork_len));
     if !h.uses_resource_fork() {
-        // Inline content is at most a few KiB: decode it whole and cut.
         let whole = decompress(decmpfs_xattr, None)?;
-        return Ok(whole
-            .get(offset..end)
-            .map(|s| s.to_vec())
-            .unwrap_or_default());
+        let start = usize::try_from(offset).map_err(|_| bad())?;
+        let end = usize::try_from(end).map_err(|_| bad())?;
+        return whole.get(start..end).map(|s| s.to_vec()).ok_or_else(|| bad().into());
     }
-    let first = offset / CHUNK;
-    let last = (end - 1) / CHUNK;
-    let mut out = Vec::with_capacity(((last - first + 1) * CHUNK).min(MAX_DECODE_RESERVE));
+    let first = usize::try_from(offset / CHUNK as u64).map_err(|_| bad())?;
+    let last = usize::try_from((end - 1) / CHUNK as u64).map_err(|_| bad())?;
+    let capacity = (end - offset).saturating_add(2 * CHUNK as u64)
+        .min(MAX_DECODE_RESERVE as u64) as usize;
+    let mut out = Vec::with_capacity(capacity);
     decode_chunks(h.method, fork_len, fork, total, first, last, &mut out)?;
-    let skip = offset - first * CHUNK;
-    out.get(skip..skip + (end - offset))
-        .map(|s| s.to_vec())
-        .ok_or_else(|| {
-            DecmpfsError::LengthMismatch {
-                got: out.len(),
-                want: end - offset,
-            }
-            .into()
-        })
+    let skip = (offset % CHUNK as u64) as usize;
+    let count = usize::try_from(end - offset).map_err(|_| bad())?;
+    out.get(skip..skip + count).map(|s| s.to_vec()).ok_or_else(|| {
+        DecmpfsError::LengthMismatch { got: out.len(), want: count }.into()
+    })
 }
 
 /// A raw chunk: one marker byte, then exactly `want` bytes of content.
@@ -749,6 +756,27 @@ mod tests {
             let mut s = self.bytes;
             ForkBytes::read(&mut s, offset, len)
         }
+    }
+
+    #[test]
+    fn compressed_range_above_four_gib_uses_only_requested_chunks() {
+        let chunks = (1usize << 16) + 1;
+        let block = miniz_oxide::deflate::compress_to_vec_zlib(&vec![0x5a; CHUNK], 6);
+        let mut rf = vec![0u8; 8 + chunks * 8];
+        rf[..4].copy_from_slice(&0u32.to_be_bytes());
+        rf[4..8].copy_from_slice(&(chunks as u32).to_le_bytes());
+        for i in 0..chunks {
+            let at = 8 + i * 8;
+            let start = rf.len() - 4;
+            rf[at..at + 4].copy_from_slice(&(start as u32).to_le_bytes());
+            rf[at + 4..at + 8].copy_from_slice(&(block.len() as u32).to_le_bytes());
+            rf.extend_from_slice(&block);
+        }
+        let attr = make_xattr(METHOD_ZLIB_RSRC, (chunks as u64) * CHUNK as u64, &[]);
+        let mut src = Counting { bytes: &rf, reads: Vec::new() };
+        let got = decompress_range_u64(&attr, rf.len(), &mut src, (1u64 << 32) + 7, 23).unwrap();
+        assert_eq!(got, vec![0x5a; 23]);
+        assert_eq!(src.reads.len(), 4, "header, count, table and one content chunk only");
     }
 
     #[test]

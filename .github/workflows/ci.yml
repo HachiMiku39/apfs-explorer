@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -45,6 +45,44 @@ jobs:
       - run: cargo test --locked -p apfs-core -p apfs -p winfsp-host --lib
       - run: cargo test --locked -p winfsp-host --test read_only_cli
       - run: cargo test --locked -p apfs-write --lib
+  windows-targets:
+    name: Windows tests (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - arch: x86
+            runner: windows-latest
+            target: i686-pc-windows-msvc
+          - arch: arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    env:
+      WINFSP_DLL_OUTPUT_PATH: ${{ github.workspace }}/target/${{ matrix.target }}/debug/deps
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-${{ matrix.target }}
+      - run: cargo test --locked --target ${{ matrix.target }} -p apfs-core -p apfs -p winfsp-host --lib
+      - run: cargo test --locked --target ${{ matrix.target }} -p winfsp-host --test read_only_cli
+      - run: cargo test --locked --target ${{ matrix.target }} -p apfs-write --lib
+  packaging-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - run: python -m unittest discover -s scripts -p test_verify_windows_arch.py
   macos-fixtures:
     runs-on: macos-latest
     timeout-minutes: 30

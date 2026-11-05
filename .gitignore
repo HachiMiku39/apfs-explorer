@@ -123,3 +123,8 @@ xtask/CLAUDE.md
 
 # Local OpenAPFS verification toolchain/cache (never part of release source)
 .openapfs-local/
+
+# Architecture-specific generated Tauri resources
+/crates/apfs-explorer-gui/.openapfs-target.json
+/crates/apfs-explorer-gui/winfsp-*.dll
+/scripts/__pycache__/

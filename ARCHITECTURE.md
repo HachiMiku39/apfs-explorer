@@ -24,3 +24,16 @@ The GUI prevents normal window close while a mount is pending or a tracked
 drive remains. Unmount only removes tracking after the drive letter disappears;
 a failed stop keeps the mount visible for retry. Forced process termination and
 OS shutdown still need separate Windows testing.
+
+Windows architecture selection is shared in `apfs-core/src/windows_arch.rs`.
+Build scripts use `CARGO_CFG_TARGET_ARCH` rather than the build host architecture;
+the runtime and GUI use their process architecture for the DLL and launchctl.
+The supported MSVC triples are x86_64, i686 and aarch64. i686 is cross-compiled
+on an x64 runner and tested under WoW64; ARM64 runs on `windows-11-arm`.
+MSI registry components explicitly use the 32-bit view expected by WinFsp 2.1,
+so a literal WOW6432Node path is not redirected twice on x86.
+
+File and stream positions/sizes are u64 throughout ranged reads, including
+logical compressed file positions. Only bounded buffer sizes and within-buffer
+indices use usize. Whole-buffer APIs and unrepresentable resource forks return
+errors rather than wrapping a length or reporting a false EOF on x86.

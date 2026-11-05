@@ -1,21 +1,33 @@
 //! winfsp-host build script.
 //!
-//! winfsp-rs mandates delay-loading of `winfsp-x64.dll`. This emits the
+//! winfsp-rs mandates delay-loading of the target architecture WinFsp DLL. This emits the
 //! linker flags so the WinFsp imports are delay-loaded; at runtime
 //! `winfsp::winfsp_init()` calls `FspLoad`, which locates and loads the
 //! DLL from the WinFsp install path recorded in the registry. Without
 //! this, the binary fails to start with STATUS_DLL_NOT_FOUND (0xC0000135)
 //! before `main` runs (the import would be a hard, non-delay dependency).
 //!
-//! Only relevant when building natively on Windows (host == target);
-//! on macOS the `winfsp` build-dependency is absent (target-gated in
-//! Cargo.toml) and this is a no-op.
+//! Applies to Windows MSVC targets, including i686 cross-builds from x64.
+//! Non-Windows targets emit no WinFsp linker flags.
 //!
 //! It also sets `APFS_BUILD_ID` (see `build_id`), which `apfs-mount
 //! --version` and the log's start line print.
+#[path = "../apfs-core/src/windows_arch.rs"]
+mod windows_arch;
+
 fn main() {
-    #[cfg(windows)]
-    winfsp::build::winfsp_link_delayload();
+    println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_OS");
+    println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_ARCH");
+    println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_ENV");
+    // Build scripts run on the host: use Cargo's target, never cfg!(target_arch).
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        assert_eq!(std::env::var("CARGO_CFG_TARGET_ENV").as_deref(), Ok("msvc"));
+        let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+        let target = windows_arch::WindowsArch::from_rust_arch(&arch)
+            .unwrap_or_else(|| panic!("unsupported Windows architecture: {arch}"));
+        println!("cargo:rustc-link-lib=dylib=delayimp");
+        println!("cargo:rustc-link-arg=/DELAYLOAD:{}", target.dll_name());
+    }
     println!("cargo:rustc-env=APFS_BUILD_ID={}", build_id());
     println!("cargo:rustc-env=APFS_PRODUCT_VERSION={}", product_version());
 }

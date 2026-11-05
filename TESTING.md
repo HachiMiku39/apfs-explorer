@@ -6,7 +6,7 @@ All compilation is performed in GitHub Actions. This document describes required
 
 Local JSON configuration and WiX XML parsing passed. Frontend JavaScript syntax,
 English/Chinese language selection and unknown-message fallback passed in Node.
-`git diff --check` passed. Rust compilation/unit/integration tests were **not run**:
+`git diff --check` passed. The PE packaging checker passed two Python test methods covering all three targets, incorrect machine IDs, malformed/truncated headers and missing files. The i686 Clang target override reports 32-bit pointer width locally. Rust compilation/unit/integration tests were **not run**:
 the machine has no Rust toolchain and the attempted official toolchain download
 timed out. GitHub Actions workflows and draft PR #1 exist, but no successful cloud
 run or Windows artifact is recorded. This is a source development candidate,
@@ -16,7 +16,7 @@ not an accepted or production-ready v0.1 release.
 
 - Linux/macOS/Windows: parser and filesystem unit tests; host library tests; CLI subprocess regression asserting every mutation fails and a source image remains byte-identical; inherited writer unit tests only.
 - macOS: generate tiny and populated 256MiB APFS fixtures with hdiutil, then read them through FsView and the GPT-offset integration stack. Fixture content must be present; do not allow a size-only fixture to count as successful population.
-- Windows x64: compile mount helper + Tauri GUI, create ZIP/MSI, hash outputs and include the exact source archive.
+- Windows ARM64/x64/x86: compile the matching mount helper + Tauri GUI, verify PE machine IDs, create separately named ZIP/MSI packages, hash outputs and include the exact source archive. ARM64 tests run natively; x86 tests run under WoW64 on an x64 runner.
 - cargo-deny checks SPDX license policy against locked dependencies. Format checks gate source style; the current candidate still needs a successful rustfmt run. No physical disk test runs automatically.
 
 ## Acceptance matrix
@@ -45,3 +45,18 @@ not an accepted or production-ready v0.1 release.
 ## Future write qualification (not v0.1)
 
 Use copied regular images only. Cover create/delete/move/rename for files and directories, random overwrite/append, truncate/extend, exhaustion, allocation/free queues, snapshots/clones, hard links/xattrs, COW checkpoint commit and both durability barriers. Inject short writes, I/O errors, dropped/reordered flushes and termination at each commit stage. Independently mount/read/write on macOS and run non-repair fsck. Enumerate permitted old/new checkpoint outcomes and verify every referenced extent and free-space invariant. No passing test authorizes hardware writes or proves production reliability.
+
+## Architecture-specific release gates
+
+Run `python -m unittest discover -s scripts -p test_verify_windows_arch.py`.
+On each built output run `python scripts/verify_windows_arch.py --target <triple>
+--directory target/<triple>/release` to reject mixed-architecture EXEs/DLLs.
+The verifier does not replace actual installation or WinFsp mount tests.
+
+Run the Rust unit regressions on each target, including the file extent read
+straddling 4GiB, compressed reads above 4GiB, 4TiB GPT addressing, architecture
+mapping and source write-denial tests. Explicitly test the x86 package on
+32-bit Windows 10 in addition to WoW64; test the ARM64 package on ARM64 Windows
+with the ARM64 WinFsp driver. Install/uninstall the MSI, detect the launcher,
+mount/copy/hash/unmount a disposable image, and compare the source hash.
+All these Rust/Windows checks remain pending until an actual successful run.

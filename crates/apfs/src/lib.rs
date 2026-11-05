@@ -885,9 +885,6 @@ impl<D: BlockDevice> FsView<D> {
             Some(i) => i,
             None => return Err(FsError::NotFound(path.to_string())),
         };
-        let Ok(offset) = usize::try_from(offset) else {
-            return Ok(Vec::new());
-        };
         Ok(self
             .catalog
             .read_file_decompressed_range(&mut self.dev, ino, offset, len)?)

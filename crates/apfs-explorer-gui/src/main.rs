@@ -8,6 +8,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[path = "../../apfs-core/src/windows_arch.rs"]
+mod windows_arch;
 mod commands;
 #[cfg(windows)]
 mod drives;

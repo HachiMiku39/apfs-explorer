@@ -10,44 +10,89 @@ concurrency:
   group: windows-artifacts-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  windows-x64:
-    runs-on: windows-latest
-    timeout-minutes: 60
+  windows:
+    name: Windows ${{ matrix.arch }} ZIP and MSI
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            dll: winfsp-x64.dll
+            python_arch: x64
+          - arch: x86
+            runner: windows-latest
+            target: i686-pc-windows-msvc
+            dll: winfsp-x86.dll
+            python_arch: x64
+          - arch: arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            dll: winfsp-a64.dll
+            python_arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    env:
+      WINFSP_DLL_OUTPUT_PATH: ${{ github.workspace }}/target/${{ matrix.target }}/release
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          architecture: ${{ matrix.python_arch }}
       - name: Test shipping host before packaging
-        run: cargo test --locked -p winfsp-host --test read_only_cli
-      - name: Build mount helper in GitHub cloud
-        run: cargo build --locked --release -p winfsp-host
+        run: cargo test --locked --target ${{ matrix.target }} -p winfsp-host --test read_only_cli
+      - name: Build matching mount helper in GitHub cloud
+        run: cargo build --locked --release --target ${{ matrix.target }} -p winfsp-host
       - uses: taiki-e/install-action@v2
         with:
           tool: tauri-cli
-      - name: Build GUI and MSI
+      - name: Build matching GUI and MSI
         shell: pwsh
         run: |
-          Copy-Item target/release/apfs-mount.exe crates/apfs-explorer-gui/apfs-mount.exe
-          Push-Location crates/apfs-explorer-gui
-          cargo tauri build --bundles msi -- --locked
+          $out = Join-Path $env:GITHUB_WORKSPACE 'target/${{ matrix.target }}/release'
+          $gui = Join-Path $env:GITHUB_WORKSPACE 'crates/apfs-explorer-gui'
+          Copy-Item "$out/apfs-mount.exe" "$gui/apfs-mount.exe"
+          Copy-Item "$out/${{ matrix.dll }}" "$gui/${{ matrix.dll }}"
+          @{ bundle = @{ resources = @('apfs-mount.exe', '${{ matrix.dll }}') } } |
+            ConvertTo-Json -Depth 4 | Set-Content "$gui/.openapfs-target.json" -Encoding utf8
+          if (Test-Path "$out/bundle/msi") { Remove-Item "$out/bundle/msi" -Recurse -Force }
+          Push-Location $gui
+          cargo tauri build --target '${{ matrix.target }}' --bundles msi --config .openapfs-target.json -- --locked
           if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed' }
           Pop-Location
-      - name: Package ZIP, MSI, source and checksums
+      - name: Verify EXE and DLL architecture before labelling artifacts
+        run: python scripts/verify_windows_arch.py --target ${{ matrix.target }} --directory target/${{ matrix.target }}/release
+      - name: Package ZIP, MSI, matching source and checksums
         shell: pwsh
         run: |
+          $version = (Get-Content crates/apfs-explorer-gui/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $stem = "OpenAPFS-$version-windows-${{ matrix.arch }}"
+          $out = Join-Path $env:GITHUB_WORKSPACE 'target/${{ matrix.target }}/release'
           New-Item -ItemType Directory -Force dist/portable | Out-Null
-          Copy-Item target/release/apfs-mount.exe,target/release/apfs-dump.exe,target/release/apfs-explorer.exe dist/portable
+          foreach ($name in @('apfs-mount.exe', 'apfs-dump.exe', 'apfs-explorer.exe', '${{ matrix.dll }}')) {
+            Copy-Item (Join-Path $out $name) dist/portable
+          }
           Copy-Item README.md,ARCHITECTURE.md,TESTING.md,SECURITY.md,LICENSE,NOTICE.md dist/portable
-          Copy-Item target/release/bundle/msi/*.msi dist/OpenAPFS-0.1.0-windows-x64.msi
-          Compress-Archive dist/portable/* dist/OpenAPFS-0.1.0-windows-x64.zip
-          git archive --format=zip --output=dist/OpenAPFS-0.1.0-source.zip HEAD
-          Get-ChildItem dist -File | ForEach-Object {
+          $msi = @(Get-ChildItem "$out/bundle/msi" -Filter *.msi)
+          if ($msi.Count -ne 1) { throw 'Expected exactly one freshly built MSI' }
+          Copy-Item $msi[0].FullName "dist/$stem.msi"
+          Compress-Archive dist/portable/* "dist/$stem.zip"
+          git archive --format=zip --output="dist/$stem-source.zip" HEAD
+          Get-ChildItem dist -File | Sort-Object Name | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
             "$hash  $($_.Name)" | Add-Content dist/SHA256SUMS.txt
           }
       - uses: actions/upload-artifact@v7
         with:
-          name: OpenAPFS-0.1.0-windows-x64
+          name: OpenAPFS-windows-${{ matrix.arch }}
           if-no-files-found: error
           path: |
             dist/*.zip

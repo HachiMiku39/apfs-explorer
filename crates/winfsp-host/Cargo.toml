@@ -55,13 +55,8 @@ features = [
   "Win32_System_Console",
 ]
 
-# winfsp-rs REQUIRES delay-loading of winfsp-x64.dll: the import must be
-# delay-loaded so winfsp_init()/FspLoad can resolve the DLL from the WinFsp
-# registry install path at runtime. Without build.rs winfsp_link_delayload()
-# the binary fails at load with STATUS_DLL_NOT_FOUND (0xC0000135) before
-# main() runs. See crates/winfsp-host/build.rs.
-[target.'cfg(windows)'.build-dependencies]
-winfsp = "0.13"
+# build.rs emits target-specific MSVC delay-load flags itself. A winfsp
+# build-dependency would unnecessarily link a second copy for the build host.
 
 [dev-dependencies]
 tempfile = { workspace = true }

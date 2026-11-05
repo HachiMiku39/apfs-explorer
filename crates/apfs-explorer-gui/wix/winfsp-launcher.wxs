@@ -4,7 +4,7 @@
   once when it opens) can start/stop a globally-visible, read-only APFS mount
   via launchctl without a per-mount UAC prompt.
 
-  Written under SOFTWARE\WOW6432Node\WinFsp\Services (where the WinFsp launcher
+  Written in the 32-bit registry view under SOFTWARE\WinFsp\Services (where the WinFsp launcher
   reads its service classes). ForceDeleteOnUninstall removes the class on
   uninstall. The CommandLine is read-only by construction (it carries no
   writable flag): %1 is the physical drive index, %2 is the drive letter the
@@ -14,9 +14,9 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <ComponentGroup Id="WinFspLauncherClass" Directory="INSTALLDIR">
-      <Component Id="ApfsMountLauncherClass" Guid="*">
+      <Component Id="ApfsMountLauncherClass" Guid="*" Win64="no">
         <RegistryKey Root="HKLM"
-                     Key="SOFTWARE\WOW6432Node\WinFsp\Services\apfs-mount"
+                     Key="SOFTWARE\WinFsp\Services\apfs-mount"
                      ForceDeleteOnUninstall="yes">
           <RegistryValue Type="string" Name="Executable"
                          Value="[INSTALLDIR]apfs-mount.exe" KeyPath="yes" />
@@ -36,9 +36,9 @@
       </Component>
       <!-- Snapshot class: a volume as one of its snapshots holds it, always
            read-only (apfs-mount ignores any writable request for one). -->
-      <Component Id="ApfsMountLauncherClassSnap" Guid="*">
+      <Component Id="ApfsMountLauncherClassSnap" Guid="*" Win64="no">
         <RegistryKey Root="HKLM"
-                     Key="SOFTWARE\WOW6432Node\WinFsp\Services\apfs-mount-snap"
+                     Key="SOFTWARE\WinFsp\Services\apfs-mount-snap"
                      ForceDeleteOnUninstall="yes">
           <RegistryValue Type="string" Name="Executable"
                          Value="[INSTALLDIR]apfs-mount.exe" KeyPath="yes" />

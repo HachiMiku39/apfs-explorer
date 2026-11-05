@@ -35,3 +35,8 @@ WinFsp describes its exception as a FLOSS exception and separately offers a
 commercial license. OpenAPFS v0.1's MSI does not bundle/install the WinFsp MSI;
 install the unmodified official runtime separately. Preserve all applicable
 notices and audit per-file provenance before future code reuse.
+
+Architecture packages include the unmodified matching WinFsp user-mode DLL
+from the locked winfsp-sys distribution (winfsp-x86/x64/a64.dll), not its kernel
+driver or MSI. WinFsp GPLv3/FLOSS terms and source remain available from
+https://github.com/winfsp/winfsp. The official driver is a separate prerequisite.

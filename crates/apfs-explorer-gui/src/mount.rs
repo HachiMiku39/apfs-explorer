@@ -289,15 +289,23 @@ fn combine_output(out: &std::process::Output) -> String {
     s
 }
 
-/// Resolve the path to `launchctl-x64.exe` shipped with WinFsp.
+/// Resolve the launcher matching this process; never fall back to another ABI.
 fn locate_launchctl() -> Result<String, MountError> {
-    const CANDIDATES: [&str; 2] = [
-        r"C:\Program Files (x86)\WinFsp\bin\launchctl-x64.exe",
-        r"C:\Program Files\WinFsp\bin\launchctl-x64.exe",
-    ];
-    for c in CANDIDATES {
-        if Path::new(c).exists() {
-            return Ok(c.to_string());
+    let arch = crate::windows_arch::WindowsArch::from_rust_arch(std::env::consts::ARCH)
+        .ok_or(MountError::LaunchctlMissing)?;
+    let mut bins = Vec::new();
+    if let Some(bin) = std::env::var_os("WINFSP_BIN") {
+        bins.push(PathBuf::from(bin));
+    }
+    for var in ["ProgramFiles(x86)", "ProgramW6432", "ProgramFiles"] {
+        if let Some(root) = std::env::var_os(var) {
+            bins.push(PathBuf::from(root).join("WinFsp").join("bin"));
+        }
+    }
+    for bin in bins {
+        let path = bin.join(arch.launchctl_name());
+        if path.is_file() {
+            return Ok(path.to_string_lossy().into_owned());
         }
     }
     Err(MountError::LaunchctlMissing)
