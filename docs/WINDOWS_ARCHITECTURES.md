@@ -17,6 +17,7 @@ OpenAPFS process. ARM64 builds are native and do not rely on an x64 APFS helper.
 
 ## Build and packaging
 
+The Tauri CLI is pinned to 2.12.4, whose MSI bundler handles all three targets.
 GitHub Actions always passes an explicit `--target` to Cargo and Tauri. Outputs
 live under `target/<triple>/release`; the helper, GUI and DLL are staged from the
 same target directory. A generated Tauri config bundles that DLL in the MSI.
@@ -54,7 +55,7 @@ refused explicitly. Compressed logical file ranges also retain 64-bit positions.
 
 - [Rust Windows MSVC targets](https://doc.rust-lang.org/rustc/platform-support/windows-msvc.html)
 - [Tauri Windows architectures](https://v2.tauri.app/distribute/windows-installer/#building-for-32-bit-or-arm)
-- [Tauri MSI architecture implementation](https://github.com/tauri-apps/tauri/blob/dev/crates/tauri-bundler/src/bundle/windows/msi/mod.rs)
+- [Tauri MSI architecture implementation](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/msi/mod.rs)
 - [GitHub ARM64 Windows runner](https://github.blog/changelog/2025-08-07-arm64-hosted-runners-for-public-repositories-are-now-generally-available/)
 - [WinFsp DLL/launcher distribution](https://github.com/winfsp/winfsp/blob/master/build/VStudio/installer/Product.wxs)
 - [Locked winfsp-sys build script](https://github.com/SnowflakePowered/winfsp-rs/blob/0.13.0/winfsp-sys/build.rs)

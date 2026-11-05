@@ -53,7 +53,7 @@ jobs:
         run: cargo build --locked --release --target ${{ matrix.target }} -p winfsp-host
       - uses: taiki-e/install-action@v2
         with:
-          tool: tauri-cli
+          tool: tauri-cli@2.12.4
       - name: Build matching GUI and MSI
         shell: pwsh
         run: |
