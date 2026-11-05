@@ -19,6 +19,18 @@ fn main() {
     let log_dir = logging::init();
 
     let builder = tauri::Builder::default()
+        .on_window_event(|window, event| {
+            #[cfg(windows)]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let active = drives::MOUNTED.lock().map_or(true, |g| !g.is_empty());
+                if active || mount::mount_in_progress() {
+                    api.prevent_close();
+                    let _ = window.set_title("OpenAPFS — 请先卸载磁盘 / Unmount drives before closing");
+                }
+            }
+            #[cfg(not(windows))]
+            let _ = (window, event);
+        })
         .setup(move |app| {
             tracing::info!(
                 version = %app.package_info().version,

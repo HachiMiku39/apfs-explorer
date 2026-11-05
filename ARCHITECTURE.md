@@ -19,3 +19,8 @@ Unknown container and volume incompatible feature bits are refused. The bootstra
 The inherited `apfs-write` engine and image tests are development sources, not a supported v0.1 mutation path. Future image-only experiments need a separate reviewed capability, regular-file handle validation, fixture provenance, fault injection and independent macOS verification before any consideration of hardware writes.
 
 64-bit addressing avoids a 2TB MBR-style limit; this is not evidence of a complete 4TB hardware test. Cache bounds and range reads avoid loading a file into memory for normal Explorer reads. Path/Unicode and large-directory behavior are verified separately in TESTING.md.
+
+The GUI prevents normal window close while a mount is pending or a tracked
+drive remains. Unmount only removes tracking after the drive letter disappears;
+a failed stop keeps the mount visible for retry. Forced process termination and
+OS shutdown still need separate Windows testing.

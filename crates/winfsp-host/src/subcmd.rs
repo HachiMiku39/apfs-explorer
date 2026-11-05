@@ -629,12 +629,8 @@ fn volumes_json<D: BlockDevice>(dev: &mut D) -> Result<String, String> {
         .or_else(|| volumes.iter().position(|v| !v.system));
     let mut out = String::from("{\"volumes\":[");
     for (i, v) in volumes.iter().enumerate() {
-        // A snapshot tree that cannot be read lists no snapshots; the
-        // volume itself can still be mounted.
-        let snaps = apfs_core::snapshot::list(dev, v.snap_meta_tree_oid, bsz).unwrap_or_else(|e| {
-            eprintln!("volume {}: snapshots unreadable: {e:?}", v.index);
-            Vec::new()
-        });
+        let snaps = apfs_core::snapshot::list(dev, v.snap_meta_tree_oid, bsz)
+            .map_err(|e| format!("volume {}: snapshots unreadable: {e:?}", v.index))?;
         if i > 0 {
             out.push(',');
         }

@@ -149,7 +149,7 @@ pub async fn unmount_drive(drive: u32) -> Result<(), String> {
 #[tauri::command]
 pub fn app_version(app: tauri::AppHandle) -> String {
     format!(
-        "APFS Explorer {} ({})",
+        "OpenAPFS {} ({})",
         app.package_info().version,
         env!("APFS_BUILD_ID")
     )

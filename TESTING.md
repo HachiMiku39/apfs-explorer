@@ -2,12 +2,22 @@
 
 All compilation is performed in GitHub Actions. This document describes required coverage, not a claim that all scenarios passed. Pin every report to the tested commit, OS, WinFsp version, image SHA-256, test command and result. Skipped tests are not passes.
 
+## Current verification record — 2026-11-05
+
+Local JSON configuration and WiX XML parsing passed. Frontend JavaScript syntax,
+English/Chinese language selection and unknown-message fallback passed in Node.
+`git diff --check` passed. Rust compilation/unit/integration tests were **not run**:
+the machine has no Rust toolchain and the attempted official toolchain download
+timed out. GitHub Actions workflows and draft PR #1 exist, but no successful cloud
+run or Windows artifact is recorded. This is a source development candidate,
+not an accepted or production-ready v0.1 release.
+
 ## Automatic v0.1 checks
 
 - Linux/macOS/Windows: parser and filesystem unit tests; host library tests; CLI subprocess regression asserting every mutation fails and a source image remains byte-identical; inherited writer unit tests only.
 - macOS: generate tiny and populated 256MiB APFS fixtures with hdiutil, then read them through FsView and the GPT-offset integration stack. Fixture content must be present; do not allow a size-only fixture to count as successful population.
 - Windows x64: compile mount helper + Tauri GUI, create ZIP/MSI, hash outputs and include the exact source archive.
-- cargo-deny checks SPDX license policy against locked dependencies. Format checks gate source style. No physical disk test runs automatically.
+- cargo-deny checks SPDX license policy against locked dependencies. Format checks gate source style; the current candidate still needs a successful rustfmt run. No physical disk test runs automatically.
 
 ## Acceptance matrix
 

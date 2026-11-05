@@ -206,10 +206,9 @@ impl Container {
                         .ok_or_else(oor)?,
                     &mut buf,
                 )?;
-                if let Ok(v) = crate::volume::VolumeSuperblock::parse(&buf) {
-                    if !v.is_system() {
-                        out.push(v);
-                    }
+                let v = crate::volume::VolumeSuperblock::parse(&buf)?;
+                if !v.is_system() {
+                    out.push(v);
                 }
             }
         }
@@ -237,7 +236,8 @@ impl Container {
                         .ok_or_else(oor)?,
                     &mut buf,
                 )?;
-                if let Ok(v) = crate::volume::VolumeSuperblock::parse(&buf) {
+                {
+                    let v = crate::volume::VolumeSuperblock::parse(&buf)?;
                     let role = v.volume_role();
                     let (encrypted, system) = (v.is_encrypted(), v.is_system());
                     out.push(VolumeInfo {

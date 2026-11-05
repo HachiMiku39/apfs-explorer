@@ -120,3 +120,6 @@ xtask/CLAUDE.md
 /fuzz/corpus
 /fuzz/artifacts
 /fuzz/coverage
+
+# Local OpenAPFS verification toolchain/cache (never part of release source)
+.openapfs-local/

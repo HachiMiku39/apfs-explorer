@@ -600,13 +600,13 @@ impl<D: BlockDevice> FsView<D> {
                 None => continue,
             };
             let mut raw = vec![0u8; bsz];
-            dev.read_at(paddr * block_size as u64, &mut raw)?;
-            match VolumeSuperblock::parse(&raw) {
-                Ok(vsb) => cands.push(Cand { index, paddr, vsb }),
-                // A volume that fails to parse is skipped, not fatal - the
-                // others may still be mountable.
-                Err(_) => continue,
-            }
+            let offset = paddr.checked_mul(u64::from(block_size))
+                .ok_or(ContainerError::Parse(apfs_core::ParseError::BadField {
+                    field: "volume physical address", value: paddr,
+                }))?;
+            dev.read_at(offset, &mut raw)?;
+            let vsb = VolumeSuperblock::parse(&raw)?;
+            cands.push(Cand { index, paddr, vsb });
         }
         if cands.is_empty() {
             return Err(FsError::NoVolume);
