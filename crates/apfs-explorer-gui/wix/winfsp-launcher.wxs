@@ -13,7 +13,10 @@
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
-    <ComponentGroup Id="WinFspLauncherClass" Directory="INSTALLDIR">
+    <!-- Registry-only 32-bit components use TARGETDIR, so x64/ARM64 MSI
+         validation does not place a 32-bit component in a 64-bit directory.
+         The launch command still references the actual [INSTALLDIR]. -->
+    <ComponentGroup Id="WinFspLauncherClass" Directory="TARGETDIR">
       <Component Id="ApfsMountLauncherClass" Guid="*" Win64="no">
         <RegistryKey Root="HKLM"
                      Key="SOFTWARE\WinFsp\Services\apfs-mount"
