@@ -200,14 +200,26 @@ fn run_mount(args: &[String]) {
                     eprintln!("error: --drive and --image are mutually exclusive");
                     std::process::exit(1);
                 }
-                drive = it.next().and_then(|s| s.parse().ok());
+                drive = Some(match it.next().and_then(|s| s.parse().ok()) {
+                    Some(n) => n,
+                    None => {
+                        eprintln!("error: --drive requires an unsigned disk number");
+                        std::process::exit(1);
+                    }
+                });
             }
             "--image" => {
                 if drive.is_some() {
                     eprintln!("error: --drive and --image are mutually exclusive");
                     std::process::exit(1);
                 }
-                image = it.next().map(|s| std::path::PathBuf::from(s));
+                image = Some(match it.next().filter(|s| !s.starts_with("--")) {
+                    Some(path) => std::path::PathBuf::from(path),
+                    None => {
+                        eprintln!("error: --image requires a path");
+                        std::process::exit(1);
+                    }
+                });
             }
             "--mount" => {
                 mount_arg = it.next().cloned();

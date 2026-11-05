@@ -72,11 +72,18 @@ mod inner {
                 out.flush()?;
                 walk(fs, &child_path, out, st)?;
             } else {
-                let content = fs.read(&child_path, 0, usize::MAX)?;
                 let mut hasher = Sha256::new();
-                hasher.update(&content);
+                let mut offset = 0u64;
+                while offset < attr.size {
+                    let chunk = fs.read(&child_path, offset, (attr.size - offset).min(1024 * 1024) as usize)?;
+                    if chunk.is_empty() {
+                        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "APFS file ended before its declared size").into());
+                    }
+                    offset += chunk.len() as u64;
+                    hasher.update(&chunk);
+                }
                 let digest = hasher.finalize();
-                writeln!(out, "{}\t{}\t{:x}", child_path, content.len(), digest)?;
+                writeln!(out, "{}\t{}\t{:x}", child_path, offset, digest)?;
                 out.flush()?;
                 st.files += 1;
             }

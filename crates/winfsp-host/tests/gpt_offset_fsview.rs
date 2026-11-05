@@ -53,6 +53,16 @@ fn fsview_over_gpt_wrapped_fixture() {
     disk[ent + 40..ent + 48].copy_from_slice(&last_lba.to_le_bytes());
     disk[cont_off..cont_off + apfs_bytes.len()].copy_from_slice(&apfs_bytes);
 
+    disk[520..524].copy_from_slice(&0x0001_0000u32.to_le_bytes());
+    disk[524..528].copy_from_slice(&92u32.to_le_bytes());
+    disk[536..544].copy_from_slice(&1u64.to_le_bytes());
+    disk[552..560].copy_from_slice(&34u64.to_le_bytes());
+    disk[560..568].copy_from_slice(&last_lba.to_le_bytes());
+    let c = winfsp_host::gpt::crc32(&disk[1024..1024 + 128 * 128]);
+    disk[600..604].copy_from_slice(&c.to_le_bytes());
+    let c = winfsp_host::gpt::crc32(&disk[512..604]);
+    disk[528..532].copy_from_slice(&c.to_le_bytes());
+
     let mut tmp = tempfile::NamedTempFile::new().unwrap();
     tmp.write_all(&disk).unwrap();
     tmp.flush().unwrap();

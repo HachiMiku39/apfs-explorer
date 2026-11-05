@@ -139,6 +139,12 @@ impl Container {
     }
 
     fn validate_features(nx: &NxSuperblock) -> Result<(), ContainerError> {
+        if nx.xp_desc_blocks & 0x8000_0000 != 0 {
+            return Err(ContainerError::Parse(ParseError::BadField {
+                field: "checkpoint descriptor tree is unsupported",
+                value: u64::from(nx.xp_desc_blocks),
+            }));
+        }
         // Apple NX_INCOMPAT_VERSION2. Synthetic legacy fixtures use zero.
         // VERSION1, Fusion, and unknown bits are not implemented.
         if nx.incompatible_features & !0x2 != 0 {
@@ -891,7 +897,7 @@ mod tests {
         block[64..72].copy_from_slice(&(1u64 << 63).to_le_bytes());
         let c = crate::checksum::fletcher64(&block);
         block[..8].copy_from_slice(&c.to_le_bytes());
-        let mut dev = MemDev(block);
+        let mut dev = MemDev(block.to_vec());
         assert!(matches!(Container::open(&mut dev), Err(ContainerError::UnsupportedContainer { .. })));
     }
 

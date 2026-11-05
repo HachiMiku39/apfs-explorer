@@ -109,8 +109,7 @@ type ImageDev = crate::cache::CachingBlockDevice<OffsetBlockDevice<ReadOnlyBlock
 /// Parallels [`crate::mount::mount_apfs`] for physical drives.
 ///
 /// * `path`       - `.img` or `.dmg` file path.
-/// * `writable`   - open the file with write access and advertise a writable
-///                  volume to WinFsp.
+/// * `writable`   - rejected in OpenAPFS v0.1; retained for API compatibility.
 /// * `mountpoint` - e.g. `"Z:"`.
 #[cfg(windows)]
 pub fn mount_apfs_image(

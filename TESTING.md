@@ -16,7 +16,7 @@ All compilation is performed in GitHub Actions. This document describes required
 | macOS writes -> OpenAPFS reads | macOS generated fixtures + byte comparisons; expand corpus with metadata/link cases |
 | Windows Explorer mount/copy/unmount | Required on disposable image using WinFsp; desktop Windows 10 and 11 separately |
 | Read-only enforcement | CLI/adapter regression, Windows writes must fail and source SHA-256 remain identical |
-| 4TB address space | Synthetic sparse-address device beyond 2TiB; real 4TB GPT SSD read-only still pending |
+| 4TB address space | Synthetic 4TiB address device beyond 2TiB (512/4Kn sectors), GPT header/array CRC corruption regressions; real 4TB GPT SSD read-only still pending |
 | Large files and many small files | Range/overflow unit tests and populated fixtures; >4GiB copy and 100k-entry Windows runs pending |
 | Unicode/NFD/case-insensitive + case-sensitive | Existing normalization tests; Windows forbidden/reserved names and >260-character paths pending |
 | Symlink/hardlink/xattr | Existing library tests; Windows reparse semantics and metadata exposure pending |

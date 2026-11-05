@@ -23,3 +23,15 @@ The Windows installer bundles and silently installs the **unmodified** official
 WinFsp MSI when WinFsp is not already present. WinFsp is licensed under GPL-3.0
 (© Bill Zissimopoulos); its complete source is available at
 <https://github.com/winfsp/winfsp>.
+
+## OpenAPFS fork clarification (2026-11-05)
+
+The list above is retained as upstream historical attribution, not a license
+compatibility determination. linux-apfs/linux-apfs-rw transaction.c explicitly
+states SPDX-License-Identifier: GPL-2.0-only; the broad GPL-2.0+ description above
+must not be relied on. Do not import GPL-2.0-only implementation code into this
+GPL-3.0-only fork. No code from that project is added by the OpenAPFS changes.
+WinFsp describes its exception as a FLOSS exception and separately offers a
+commercial license. OpenAPFS v0.1's MSI does not bundle/install the WinFsp MSI;
+install the unmodified official runtime separately. Preserve all applicable
+notices and audit per-file provenance before future code reuse.
