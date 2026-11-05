@@ -34,29 +34,6 @@
           <RegistryValue Type="integer" Name="Credentials" Value="0" />
         </RegistryKey>
       </Component>
-      <!-- Writable opt-in class: same helper, adds the writable flag. Still
-           safe - apfs-mount's snapshot-guard forces read-only on snapshotted
-           volumes; only clean-volume writes (fsck-validated) proceed. -->
-      <Component Id="ApfsMountLauncherClassRW" Guid="*">
-        <RegistryKey Root="HKLM"
-                     Key="SOFTWARE\WOW6432Node\WinFsp\Services\apfs-mount-rw"
-                     ForceDeleteOnUninstall="yes">
-          <RegistryValue Type="string" Name="Executable"
-                         Value="[INSTALLDIR]apfs-mount.exe" KeyPath="yes" />
-          <RegistryValue Type="string" Name="CommandLine"
-                         Value="--drive %1 --mount %2 --volume-index %3 --writable --wait-for-kill" />
-          <!-- Administrators and SYSTEM only. WD (Everyone) let any user on
-               the machine ask the launcher to start this service, and the
-               launcher runs it as SYSTEM with Credentials=0, so an ordinary
-               account could obtain raw access to any physical drive by
-               number - read-write for the -rw service, and reading a disk
-               raw bypasses every file permission on it either way. -->
-          <RegistryValue Type="string" Name="Security"
-                         Value="D:P(A;;RPWPLC;;;BA)(A;;RPWPLC;;;SY)" />
-          <RegistryValue Type="integer" Name="JobControl" Value="1" />
-          <RegistryValue Type="integer" Name="Credentials" Value="0" />
-        </RegistryKey>
-      </Component>
       <!-- Snapshot class: a volume as one of its snapshots holds it, always
            read-only (apfs-mount ignores any writable request for one). -->
       <Component Id="ApfsMountLauncherClassSnap" Guid="*">

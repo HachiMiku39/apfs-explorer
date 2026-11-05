@@ -15,6 +15,7 @@ pub mod logfile;
 pub mod offset_dev;
 pub mod ops;
 pub mod stats;
+pub mod safety;
 pub mod subcmd;
 
 #[cfg(windows)]

@@ -15,6 +15,10 @@ impl<D: BlockDevice> OffsetBlockDevice<D> {
     pub fn new(inner: D, base: u64, len: u64) -> Self {
         Self { inner, base, len }
     }
+
+    pub fn into_inner(self) -> D {
+        self.inner
+    }
 }
 
 impl<D: BlockDevice> BlockDevice for OffsetBlockDevice<D> {

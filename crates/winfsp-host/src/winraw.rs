@@ -161,6 +161,7 @@ impl PhysicalDrive {
     }
 
     fn open_inner(n: u32, writable: bool, share: FILE_SHARE_MODE) -> Result<Self, BlockError> {
+        crate::safety::require_read_only(writable).map_err(io_other)?;
         let path = U16CString::from_str(format!("\\\\.\\PhysicalDrive{n}"))
             .map_err(|_| io_other("bad device path"))?;
         let access = if writable {

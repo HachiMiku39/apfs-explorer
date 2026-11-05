@@ -2698,6 +2698,7 @@ pub fn mount_apfs(
     std::sync::Arc<std::sync::atomic::AtomicBool>,
     crate::winraw::DrivePresence,
 )> {
+    crate::safety::require_read_only(writable).map_err(io_err("write policy"))?;
     // Self-provision the WinFsp DLL beside the exe before ANY winfsp call,
     // so the delay-loaded import resolves (else Win32 1285).
     ensure_winfsp_dll();

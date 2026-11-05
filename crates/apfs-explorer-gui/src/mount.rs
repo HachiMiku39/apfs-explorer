@@ -49,6 +49,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 pub enum MountError {
     #[error("WinFsp launchctl not found (is WinFsp installed?)")]
     LaunchctlMissing,
+    #[error("OpenAPFS v0.1 is read-only; physical disk writes are disabled")]
+    WriteDisabled,
     #[error("launchctl {0} failed: {1}")]
     Launchctl(&'static str, String),
     #[error("no free drive letter available")]
@@ -83,6 +85,9 @@ pub fn mount(
     volume: u32,
     snapshot: Option<u64>,
 ) -> Result<String, MountError> {
+    if writable {
+        return Err(MountError::WriteDisabled);
+    }
     let launchctl = locate_launchctl()?;
     let letter = first_free_drive_letter().ok_or(MountError::NoFreeLetter)?;
     let instance = instance_name(drive);

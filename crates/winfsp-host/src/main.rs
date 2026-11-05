@@ -38,6 +38,10 @@ fn main() {
     // On non-Windows hosts the WinFsp mount path is unavailable, but the
     // cross-platform image subcommands (snapshot/clone/volume) still work.
     let argv: Vec<String> = std::env::args().collect();
+    if argv.iter().any(|a| a == "--writable") {
+        eprintln!("{}", winfsp_host::safety::WRITE_DISABLED);
+        std::process::exit(1);
+    }
     let rest = &argv[1..];
 
     // Explicit "mount" keyword on non-Windows → helpful error.
@@ -97,6 +101,10 @@ fn main() {
     use std::sync::mpsc::channel;
 
     let argv: Vec<String> = std::env::args().collect();
+    if argv.iter().any(|a| a == "--writable") {
+        eprintln!("{}", winfsp_host::safety::WRITE_DISABLED);
+        std::process::exit(1);
+    }
     let rest = &argv[1..];
 
     // Dispatch cross-platform subcommands (snapshot/clone/volume) first.

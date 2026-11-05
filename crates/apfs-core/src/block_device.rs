@@ -61,6 +61,39 @@ pub trait WritableBlockDevice: BlockDevice {
     }
 }
 
+/// Capability boundary for a host whose generic interface requires a writer.
+/// The inner device is private and is never offered a write or flush request.
+pub struct ReadOnlyBlockDevice<D: BlockDevice>(D);
+
+impl<D: BlockDevice> ReadOnlyBlockDevice<D> {
+    pub fn new(inner: D) -> Self {
+        Self(inner)
+    }
+}
+
+impl<D: BlockDevice> BlockDevice for ReadOnlyBlockDevice<D> {
+    fn size(&self) -> u64 {
+        self.0.size()
+    }
+
+    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError> {
+        self.0.read_at(offset, buf)
+    }
+
+    fn read_content_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError> {
+        self.0.read_content_at(offset, buf)
+    }
+}
+
+impl<D: BlockDevice> WritableBlockDevice for ReadOnlyBlockDevice<D> {
+    fn write_at(&mut self, _offset: u64, _buf: &[u8]) -> Result<(), BlockError> {
+        Err(BlockError::Io(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "source was opened read-only",
+        )))
+    }
+}
+
 /// File-backed `BlockDevice` - for test fixtures and file images (read-only).
 pub struct FileBlockDevice {
     file: File,
@@ -396,5 +429,23 @@ mod tests {
             24,
             "size() must report window length not inner size"
         );
+    }
+}
+
+#[cfg(test)]
+mod read_only_boundary_tests {
+    use super::*;
+
+    #[test]
+    fn adapter_never_forwards_writes_even_to_a_writable_device() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), b"unchanged").unwrap();
+        let mut dev = ReadOnlyBlockDevice::new(FileBlockDeviceRw::open_rw(file.path()).unwrap());
+        assert!(dev.write_at(0, b"corrupted").is_err());
+        dev.flush_data().unwrap();
+        assert_eq!(std::fs::read(file.path()).unwrap(), b"unchanged");
+        let mut bytes = [0u8; 9];
+        dev.read_at(0, &mut bytes).unwrap();
+        assert_eq!(&bytes, b"unchanged");
     }
 }
