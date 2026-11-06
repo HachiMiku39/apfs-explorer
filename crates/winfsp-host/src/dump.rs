@@ -75,9 +75,17 @@ mod inner {
                 let mut hasher = Sha256::new();
                 let mut offset = 0u64;
                 while offset < attr.size {
-                    let chunk = fs.read(&child_path, offset, (attr.size - offset).min(1024 * 1024) as usize)?;
+                    let chunk = fs.read(
+                        &child_path,
+                        offset,
+                        (attr.size - offset).min(1024 * 1024) as usize,
+                    )?;
                     if chunk.is_empty() {
-                        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "APFS file ended before its declared size").into());
+                        return Err(io::Error::new(
+                            io::ErrorKind::UnexpectedEof,
+                            "APFS file ended before its declared size",
+                        )
+                        .into());
                     }
                     offset += chunk.len() as u64;
                     hasher.update(&chunk);

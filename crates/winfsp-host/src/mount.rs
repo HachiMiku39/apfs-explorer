@@ -1239,6 +1239,11 @@ impl<D: WritableBlockDevice + Send + 'static> FileSystemContext for ApfsFs<D> {
     ) -> winfsp::Result<Self::FileContext> {
         let _t = crate::stats::timed("open");
         guard(|| {
+            if self.read_only
+                && crate::safety::requests_mutating_open(granted_access, create_options)
+            {
+                self.refuse_if_read_only()?;
+            }
             let path = win_to_unix(file_name);
             let mut fs_guard = self
                 .fs
@@ -2632,7 +2637,8 @@ pub(crate) fn ensure_winfsp_dll() {
         Some(d) => d,
         None => return,
     };
-    let Some(arch) = apfs_core::windows_arch::WindowsArch::from_rust_arch(std::env::consts::ARCH) else {
+    let Some(arch) = apfs_core::windows_arch::WindowsArch::from_rust_arch(std::env::consts::ARCH)
+    else {
         return;
     };
     let dll = arch.dll_name();

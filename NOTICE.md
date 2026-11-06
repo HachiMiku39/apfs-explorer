@@ -40,3 +40,11 @@ Architecture packages include the unmodified matching WinFsp user-mode DLL
 from the locked winfsp-sys distribution (winfsp-x86/x64/a64.dll), not its kernel
 driver or MSI. WinFsp GPLv3/FLOSS terms and source remain available from
 https://github.com/winfsp/winfsp. The official driver is a separate prerequisite.
+
+## Local Rust WinFsp compatibility patch (2026-11-06)
+
+The locked winfsp 0.13.0+winfsp-2.1 wrapper is preserved under vendor/winfsp
+(GPL version 3; upstream commit 17d756ae434957738b5c72cfe20091a3120fdaf3).
+OpenAPFS corrects the native SIZE_T ABI for x86 and rejects narrowing overflow.
+Original metadata/source/README and GPL text are retained; vendor/README.md
+records the original crate checksum and patch scope. winfsp-sys remains locked.

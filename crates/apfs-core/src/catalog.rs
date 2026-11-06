@@ -792,17 +792,23 @@ impl Catalog {
                 continue;
             }
             let bsz = u64::from(self.block_size);
-            let byte_offset = extent.phys_block_num.checked_mul(bsz)
-                .and_then(|base| base.checked_add(start - logical)).ok_or_else(oor)?;
+            let byte_offset = extent
+                .phys_block_num
+                .checked_mul(bsz)
+                .and_then(|base| base.checked_add(start - logical))
+                .ok_or_else(oor)?;
             let lo = byte_offset / bsz * bsz;
-            let hi = byte_offset.checked_add(end - start)
-                .and_then(|end| end.div_ceil(bsz).checked_mul(bsz)).ok_or_else(oor)?;
+            let hi = byte_offset
+                .checked_add(end - start)
+                .and_then(|end| end.div_ceil(bsz).checked_mul(bsz))
+                .ok_or_else(oor)?;
             let mut tmp = vec![0u8; usize::try_from(hi - lo).map_err(|_| oor())?];
             dev.read_content_at(lo, &mut tmp)?;
             let skip = usize::try_from(byte_offset - lo).map_err(|_| oor())?;
             let count = usize::try_from(end - start).map_err(|_| oor())?;
             let out_start = usize::try_from(start - offset).map_err(|_| oor())?;
-            out.get_mut(out_start..out_start + count).ok_or_else(oor)?
+            out.get_mut(out_start..out_start + count)
+                .ok_or_else(oor)?
                 .copy_from_slice(tmp.get(skip..skip + count).ok_or_else(oor)?);
         }
         Ok(out)
@@ -1205,7 +1211,12 @@ impl Catalog {
         inode_num: u64,
     ) -> Result<Vec<u8>, ContainerError> {
         let size = self.stat(dev, inode_num)?.size;
-        self.read_file_decompressed_range(dev, inode_num, 0, usize::try_from(size).map_err(|_| oor())?)
+        self.read_file_decompressed_range(
+            dev,
+            inode_num,
+            0,
+            usize::try_from(size).map_err(|_| oor())?,
+        )
     }
 
     /// Bytes `offset..offset+len` of the file's logical content, clamped to
@@ -1274,9 +1285,13 @@ struct XattrStream<'a, D: BlockDevice> {
 impl<D: BlockDevice> crate::decmpfs::ForkBytes for XattrStream<'_, D> {
     type Error = ContainerError;
     fn read(&mut self, offset: usize, len: usize) -> Result<Vec<u8>, ContainerError> {
-        let bytes = self
-            .catalog
-            .read_stream_range(self.dev, self.oid, self.size as u64, offset as u64, len)?;
+        let bytes = self.catalog.read_stream_range(
+            self.dev,
+            self.oid,
+            self.size as u64,
+            offset as u64,
+            len,
+        )?;
         if bytes.len() != len {
             return Err(DecmpfsError::Parse(ParseError::Short {
                 at: offset,
@@ -2094,7 +2109,9 @@ mod tests {
     fn small_reads_across_four_gib_keep_the_full_file_offset() {
         struct LargeDev(MemDev);
         impl BlockDevice for LargeDev {
-            fn size(&self) -> u64 { 4u64 << 40 }
+            fn size(&self) -> u64 {
+                4u64 << 40
+            }
             fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError> {
                 self.0.read_at(offset, buf)
             }
@@ -2106,10 +2123,14 @@ mod tests {
         inner.fill_block(6, 0x22);
         let mut dev = LargeDev(inner);
         let cat = catalog_from_leaf(root);
-        let bytes = cat.read_stream_range(&mut dev, 77, HIGH + 4096, HIGH - 8, 16).unwrap();
+        let bytes = cat
+            .read_stream_range(&mut dev, 77, HIGH + 4096, HIGH - 8, 16)
+            .unwrap();
         assert_eq!(&bytes[..8], &[0x11; 8]);
         assert_eq!(&bytes[8..], &[0x22; 8]);
-        let tail = cat.read_stream_range(&mut dev, 77, HIGH + 4096, HIGH + 4093, 16).unwrap();
+        let tail = cat
+            .read_stream_range(&mut dev, 77, HIGH + 4096, HIGH + 4093, 16)
+            .unwrap();
         assert_eq!(tail, vec![0x22; 3]);
     }
 

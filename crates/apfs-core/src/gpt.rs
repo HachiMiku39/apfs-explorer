@@ -120,11 +120,19 @@ pub fn find_apfs_container<D: BlockDevice>(
     }
     let header_len = u32_le(&hdr, 12)? as usize;
     if u32_le(&hdr, 8)? != 0x0001_0000 || !(92..=512).contains(&header_len) {
-        return Err(GptError::Malformed("unsupported GPT revision or header size"));
+        return Err(GptError::Malformed(
+            "unsupported GPT revision or header size",
+        ));
     }
     let stored_crc = u32_le(&hdr, 16)?;
-    hdr.get_mut(16..20).ok_or(GptError::Malformed("header CRC field"))?.fill(0);
-    if crc32(hdr.get(..header_len).ok_or(GptError::Malformed("header length"))?) != stored_crc {
+    hdr.get_mut(16..20)
+        .ok_or(GptError::Malformed("header CRC field"))?
+        .fill(0);
+    if crc32(
+        hdr.get(..header_len)
+            .ok_or(GptError::Malformed("header length"))?,
+    ) != stored_crc
+    {
         return Err(GptError::Malformed("GPT header CRC mismatch"));
     }
     if u64_le(&hdr, 24)? != 1 {
@@ -153,15 +161,19 @@ pub fn find_apfs_container<D: BlockDevice>(
     let table_base = part_lba
         .checked_mul(lba_size)
         .ok_or(GptError::Malformed("table base overflow"))?;
-    let table_end = table_base.checked_add(table_bytes)
+    let table_end = table_base
+        .checked_add(table_bytes)
         .ok_or(GptError::Malformed("partition table end overflow"))?;
-    let usable_start = first_usable.checked_mul(lba_size)
+    let usable_start = first_usable
+        .checked_mul(lba_size)
         .ok_or(GptError::Malformed("first usable LBA overflow"))?;
     if part_lba < 2 || first_usable > last_usable || table_end > usable_start {
         return Err(GptError::Malformed("partition table overlaps usable space"));
     }
     if dev.size() != 0 && table_end > dev.size() {
-        return Err(GptError::Malformed("partition table extends past the end of the device"));
+        return Err(GptError::Malformed(
+            "partition table extends past the end of the device",
+        ));
     }
     let mut table = vec![0u8; table_bytes as usize];
     dev.read_at(table_base, &mut table)?;
@@ -170,7 +182,8 @@ pub fn find_apfs_container<D: BlockDevice>(
     }
     for i in 0..num_parts {
         let start = (i * part_size) as usize;
-        let ent = table.get(start..start + PARTITION_ENTRY_READ_LEN)
+        let ent = table
+            .get(start..start + PARTITION_ENTRY_READ_LEN)
             .ok_or(GptError::Malformed("partition entry range"))?;
         if guid_string(&ent)?.eq_ignore_ascii_case(APFS_TYPE_GUID) {
             let first_lba = u64_le(&ent, 32)?;
@@ -184,7 +197,8 @@ pub fn find_apfs_container<D: BlockDevice>(
             let offset = first_lba
                 .checked_mul(lba_size)
                 .ok_or(GptError::Malformed("offset overflow"))?;
-            let length = last_lba.checked_sub(first_lba)
+            let length = last_lba
+                .checked_sub(first_lba)
                 .and_then(|n| n.checked_add(1))
                 .and_then(|n| n.checked_mul(lba_size))
                 .ok_or(GptError::Malformed("length overflow"))?;
@@ -271,7 +285,8 @@ mod tests {
         d[ent + 40..ent + 48].copy_from_slice(&last_lba.to_le_bytes());
         let cont = first_lba as usize * 512;
         d[cont + 32..cont + 36].copy_from_slice(b"NXSB");
-        let table_end = 1024usize.checked_add((num_entries as usize).saturating_mul(entry_size as usize));
+        let table_end =
+            1024usize.checked_add((num_entries as usize).saturating_mul(entry_size as usize));
         if let Some(table) = table_end.and_then(|end| d.get(1024..end)) {
             let c = crc32(table);
             d[600..604].copy_from_slice(&c.to_le_bytes());
@@ -290,21 +305,35 @@ mod tests {
     fn header_and_array_corruption_are_rejected() {
         let mut disk = build_disk(40, 200);
         disk.data[512 + 56] ^= 1;
-        assert!(matches!(find_apfs_container(&mut disk, 512), Err(GptError::Malformed("GPT header CRC mismatch"))));
+        assert!(matches!(
+            find_apfs_container(&mut disk, 512),
+            Err(GptError::Malformed("GPT header CRC mismatch"))
+        ));
         let mut disk = build_disk(40, 200);
         disk.data[1024 + 40] ^= 1;
-        assert!(matches!(find_apfs_container(&mut disk, 512), Err(GptError::Malformed("GPT partition array CRC mismatch"))));
+        assert!(matches!(
+            find_apfs_container(&mut disk, 512),
+            Err(GptError::Malformed("GPT partition array CRC mismatch"))
+        ));
     }
 
     #[test]
     fn four_tb_disk_addresses_beyond_two_tb_with_512_and_4kn_sectors() {
-        struct SparseDisk { head: Vec<u8>, size: u64 }
+        struct SparseDisk {
+            head: Vec<u8>,
+            size: u64,
+        }
         impl BlockDevice for SparseDisk {
-            fn size(&self) -> u64 { self.size }
+            fn size(&self) -> u64 {
+                self.size
+            }
             fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError> {
                 let start = usize::try_from(offset).unwrap();
                 let end = start.checked_add(buf.len()).unwrap();
-                let src = self.head.get(start..end).expect("GPT must only read the small header/table region");
+                let src = self
+                    .head
+                    .get(start..end)
+                    .expect("GPT must only read the small header/table region");
                 buf.copy_from_slice(src);
                 Ok(())
             }
@@ -334,9 +363,13 @@ mod tests {
             let c = crc32(&head[h..h + 92]);
             head[h + 16..h + 20].copy_from_slice(&c.to_le_bytes());
             let mut disk = SparseDisk { head, size };
-            assert_eq!(find_apfs_container(&mut disk, sector).unwrap(), ContainerRange {
-                offset: 3u64 << 40, length: 1024 * sector,
-            });
+            assert_eq!(
+                find_apfs_container(&mut disk, sector).unwrap(),
+                ContainerRange {
+                    offset: 3u64 << 40,
+                    length: 1024 * sector,
+                }
+            );
         }
     }
 

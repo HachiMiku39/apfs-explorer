@@ -281,8 +281,11 @@ fn decode_chunks<F: ForkBytes>(
     last: usize,
     out: &mut Vec<u8>,
 ) -> Result<(), F::Error> {
-    let chunks = usize::try_from(total.div_ceil(CHUNK as u64))
-        .map_err(|_| DecmpfsError::BadChunk { method, chunk: first })?;
+    let chunks =
+        usize::try_from(total.div_ceil(CHUNK as u64)).map_err(|_| DecmpfsError::BadChunk {
+            method,
+            chunk: first,
+        })?;
     let ranges = chunk_ranges(method, fork_len, fork, chunks)?;
     for i in first..=last {
         let (start, end) = ranges
@@ -329,19 +332,29 @@ pub fn decompress_range_u64<F: ForkBytes>(
         let whole = decompress(decmpfs_xattr, None)?;
         let start = usize::try_from(offset).map_err(|_| bad())?;
         let end = usize::try_from(end).map_err(|_| bad())?;
-        return whole.get(start..end).map(|s| s.to_vec()).ok_or_else(|| bad().into());
+        return whole
+            .get(start..end)
+            .map(|s| s.to_vec())
+            .ok_or_else(|| bad().into());
     }
     let first = usize::try_from(offset / CHUNK as u64).map_err(|_| bad())?;
     let last = usize::try_from((end - 1) / CHUNK as u64).map_err(|_| bad())?;
-    let capacity = (end - offset).saturating_add(2 * CHUNK as u64)
+    let capacity = (end - offset)
+        .saturating_add(2 * CHUNK as u64)
         .min(MAX_DECODE_RESERVE as u64) as usize;
     let mut out = Vec::with_capacity(capacity);
     decode_chunks(h.method, fork_len, fork, total, first, last, &mut out)?;
     let skip = (offset % CHUNK as u64) as usize;
     let count = usize::try_from(end - offset).map_err(|_| bad())?;
-    out.get(skip..skip + count).map(|s| s.to_vec()).ok_or_else(|| {
-        DecmpfsError::LengthMismatch { got: out.len(), want: count }.into()
-    })
+    out.get(skip..skip + count)
+        .map(|s| s.to_vec())
+        .ok_or_else(|| {
+            DecmpfsError::LengthMismatch {
+                got: out.len(),
+                want: count,
+            }
+            .into()
+        })
 }
 
 /// A raw chunk: one marker byte, then exactly `want` bytes of content.
@@ -773,10 +786,17 @@ mod tests {
             rf.extend_from_slice(&block);
         }
         let attr = make_xattr(METHOD_ZLIB_RSRC, (chunks as u64) * CHUNK as u64, &[]);
-        let mut src = Counting { bytes: &rf, reads: Vec::new() };
+        let mut src = Counting {
+            bytes: &rf,
+            reads: Vec::new(),
+        };
         let got = decompress_range_u64(&attr, rf.len(), &mut src, (1u64 << 32) + 7, 23).unwrap();
         assert_eq!(got, vec![0x5a; 23]);
-        assert_eq!(src.reads.len(), 4, "header, count, table and one content chunk only");
+        assert_eq!(
+            src.reads.len(),
+            4,
+            "header, count, table and one content chunk only"
+        );
     }
 
     #[test]

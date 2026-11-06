@@ -20,6 +20,7 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
+      - run: rustfmt --edition 2024 --check vendor/winfsp/src/host/interface.rs vendor/winfsp/src/notify/notifier.rs
       - name: Formatting patch for review
         if: failure()
         run: |
@@ -74,6 +75,7 @@ jobs:
           key: test-${{ matrix.target }}
       - run: cargo test --locked --target ${{ matrix.target }} -p apfs-core -p apfs -p winfsp-host --lib
       - run: cargo test --locked --target ${{ matrix.target }} -p winfsp-host --test read_only_cli
+      - run: cargo test --locked --target ${{ matrix.target }} -p winfsp --lib size_t_tests
       - run: cargo test --locked --target ${{ matrix.target }} -p apfs-write --lib
   packaging-checks:
     runs-on: ubuntu-latest

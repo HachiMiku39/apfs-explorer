@@ -11,6 +11,9 @@ repository.workspace = true
 name = "apfs-explorer"
 path = "src/main.rs"
 
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

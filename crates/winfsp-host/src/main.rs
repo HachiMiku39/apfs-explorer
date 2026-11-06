@@ -18,7 +18,7 @@
 //! --image `<path>`       raw .img or .dmg file to mount (mutually exclusive with
 //!                        --drive).
 //! --mount Z:             target drive letter (default: auto-select first free).
-//! --writable             opt-in to read+write mount (default: read-only).
+//! --writable             rejected: v0.1 is read-only.
 //! --wait-for-kill        block until the process is killed instead of reading
 //!                        stdin; useful when launched detached from SSH/scripts.
 //! --volume-uuid <UUID>   select volume by UUID (hex, with or without hyphens).
@@ -499,7 +499,7 @@ MOUNT OPTIONS:
   --drive <N>           physical drive index N (from \\.\PhysicalDriveN)
   --image <path>        raw .img/.dmg file (mutually exclusive with --drive)
   --mount <X:>          target drive letter (default: first free letter)
-  --writable            opt in to read+write  (DEFAULT: read-only)
+  --writable            rejected: v0.1 is read-only
   --wait-for-kill       keep the drive mounted until this process is killed
   -h, --help            show this help and exit
 

@@ -898,7 +898,10 @@ mod tests {
         let c = crate::checksum::fletcher64(&block);
         block[..8].copy_from_slice(&c.to_le_bytes());
         let mut dev = MemDev(block.to_vec());
-        assert!(matches!(Container::open(&mut dev), Err(ContainerError::UnsupportedContainer { .. })));
+        assert!(matches!(
+            Container::open(&mut dev),
+            Err(ContainerError::UnsupportedContainer { .. })
+        ));
     }
 
     #[test]

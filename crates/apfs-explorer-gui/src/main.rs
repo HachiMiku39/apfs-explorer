@@ -8,14 +8,14 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-#[path = "../../apfs-core/src/windows_arch.rs"]
-mod windows_arch;
 mod commands;
 #[cfg(windows)]
 mod drives;
 mod logging;
 #[cfg(windows)]
 mod mount;
+#[path = "../../apfs-core/src/windows_arch.rs"]
+mod windows_arch;
 
 fn main() {
     let log_dir = logging::init();
@@ -27,7 +27,8 @@ fn main() {
                 let active = drives::MOUNTED.lock().map_or(true, |g| !g.is_empty());
                 if active || mount::mount_in_progress() {
                     api.prevent_close();
-                    let _ = window.set_title("OpenAPFS — 请先卸载磁盘 / Unmount drives before closing");
+                    let _ =
+                        window.set_title("OpenAPFS — 请先卸载磁盘 / Unmount drives before closing");
                 }
             }
             #[cfg(not(windows))]

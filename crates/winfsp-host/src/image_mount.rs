@@ -74,7 +74,9 @@ pub fn probe_image(path: &Path) -> Result<(u64, ContainerRange), ImageMountError
     Ok((dev.size(), range))
 }
 
-fn open_image(path: &Path) -> Result<(ReadOnlyBlockDevice<FileBlockDevice>, ContainerRange), ImageMountError> {
+fn open_image(
+    path: &Path,
+) -> Result<(ReadOnlyBlockDevice<FileBlockDevice>, ContainerRange), ImageMountError> {
     let mut dev = ReadOnlyBlockDevice::new(FileBlockDevice::open(path)?);
     let size = dev.size();
     if size < APFS_MIN_SIZE {
@@ -102,7 +104,8 @@ fn open_image(path: &Path) -> Result<(ReadOnlyBlockDevice<FileBlockDevice>, Cont
 // ---------------------------------------------------------------------------
 
 #[cfg(windows)]
-type ImageDev = crate::cache::CachingBlockDevice<OffsetBlockDevice<ReadOnlyBlockDevice<FileBlockDevice>>>;
+type ImageDev =
+    crate::cache::CachingBlockDevice<OffsetBlockDevice<ReadOnlyBlockDevice<FileBlockDevice>>>;
 
 /// Mount a raw disk-image file as a Windows drive letter via WinFsp.
 ///
@@ -215,6 +218,9 @@ mod tests {
     #[test]
     fn arbitrary_bytes_are_not_guessed_as_a_container() {
         let (_f, p) = write_tmp_zeros(64 * 1024);
-        assert!(matches!(probe_image(&p), Err(ImageMountError::InvalidContainer(_))));
+        assert!(matches!(
+            probe_image(&p),
+            Err(ImageMountError::InvalidContainer(_))
+        ));
     }
 }

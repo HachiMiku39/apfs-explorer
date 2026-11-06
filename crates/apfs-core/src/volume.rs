@@ -335,7 +335,10 @@ mod tests {
             let c = fletcher64(&b);
             b[..8].copy_from_slice(&c.to_le_bytes());
             let v = VolumeSuperblock::parse(&b).unwrap();
-            assert!(matches!(v.ensure_read_supported(), Err(ContainerError::UnsupportedVolume { .. })));
+            assert!(matches!(
+                v.ensure_read_supported(),
+                Err(ContainerError::UnsupportedVolume { .. })
+            ));
         }
     }
 

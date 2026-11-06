@@ -60,3 +60,17 @@ refused explicitly. Compressed logical file ranges also retain 64-bit positions.
 - [WinFsp DLL/launcher distribution](https://github.com/winfsp/winfsp/blob/master/build/VStudio/installer/Product.wxs)
 - [Locked winfsp-sys build script](https://github.com/SnowflakePowered/winfsp-rs/blob/0.13.0/winfsp-sys/build.rs)
 - [Bindgen extra argument order](https://github.com/rust-lang/rust-bindgen/blob/v0.72.1/bindgen/lib.rs)
+
+## Local WOA evidence (2026-11-06)
+
+All three targets built helper, production Tauri GUI and MSI locally. The 467
+library tests passed natively on ARM64 and under x64/x86 emulation. ARM64 alone
+was used for the physical SSD copy/hash and write-denial test. Intel/AMD
+hardware, 32-bit Windows 10 and Windows 10 ARM64 remain unqualified.
+
+The locked Rust WinFsp wrapper also hard-coded u64 for native SIZE_T callbacks.
+The 304KiB upstream source is preserved in vendor/winfsp with its GPLv3 license,
+origin and narrowly scoped patch. Native buffer lengths now use SIZE_T/PSIZE_T;
+public u64 results are checked before conversion. Overflow returns
+STATUS_INTEGER_OVERFLOW. This does not narrow APFS file offsets or bypass any
+APFS validation. Cargo.lock preserves all unrelated dependency selections.

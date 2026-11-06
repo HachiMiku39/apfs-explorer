@@ -1,4 +1,5 @@
 [workspace]
+exclude = ["vendor/winfsp"]
 members = [
   "crates/apfs-core",
   "crates/apfs",
@@ -29,3 +30,7 @@ thiserror = "2"
 tracing = "0.1"
 tempfile = "3"
 unicode-normalization = "0.1"
+
+[patch.crates-io]
+# Preserve the locked binding, correcting native SIZE_T callbacks for x86.
+winfsp = { path = "vendor/winfsp" }

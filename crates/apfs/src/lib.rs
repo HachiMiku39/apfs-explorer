@@ -600,9 +600,11 @@ impl<D: BlockDevice> FsView<D> {
                 None => continue,
             };
             let mut raw = vec![0u8; bsz];
-            let offset = paddr.checked_mul(u64::from(block_size))
+            let offset = paddr
+                .checked_mul(u64::from(block_size))
                 .ok_or(ContainerError::Parse(apfs_core::ParseError::BadField {
-                    field: "volume physical address", value: paddr,
+                    field: "volume physical address",
+                    value: paddr,
                 }))?;
             dev.read_at(offset, &mut raw)?;
             let vsb = VolumeSuperblock::parse(&raw)?;

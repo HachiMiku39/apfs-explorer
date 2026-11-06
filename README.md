@@ -1,12 +1,12 @@
 # OpenAPFS for Windows — v0.1 read-only development
 
-免费、开源的 Windows APFS 用户态工具，Fork 自 [APFS Explorer](https://github.com/enesilhaydin/apfs-explorer)，保留其版权与 GPL-3.0-only 许可证。Rust 解析器、WinFsp 盘符接口及 Tauri GUI 均复用上游。修改日期：2026-11-05。
+免费、开源的 Windows APFS 用户态工具，Fork 自 [APFS Explorer](https://github.com/enesilhaydin/apfs-explorer)，保留其版权与 GPL-3.0-only 许可证。Rust 解析器、WinFsp 盘符接口及 Tauri GUI 均复用上游。修改日期：2026-11-06。
 
 **本 Fork v0.1 仅允许读取。任何 `--writable`、快照创建/删除/回滚、克隆写入和物理磁盘写句柄均被拒绝。** 上游的写入声明、历史测试及 CHANGELOG 不代表本 Fork 已通过验证。请先使用可丢弃镜像；CI 通过也不代表生产级可靠。
 
 ## 获取与运行
 
-所有编译在 [GitHub Actions](https://github.com/HachiMiku39/apfs-explorer/actions) 执行；Windows ARM64、x64、x86 三套作业分别产生便携 ZIP、MSI、对应源码 ZIP 和 SHA256SUMS，并检查每个 EXE/DLL 的 PE 架构。Actions artifacts 是开发产物，正式发布前仍需完成 TESTING.md 的验收。
+正式发布采用 [GitHub Actions](https://github.com/HachiMiku39/apfs-explorer/actions)；ARM64、x64、x86 三套作业分别产生便携 ZIP、MSI、对应源码 ZIP 和 SHA256SUMS，并检查 EXE/DLL 的 PE 架构。本次经用户明确授权，在 Parallels Windows 11 ARM64 内完成本地离线构建，不能记为云编译成功。当前仍是开发候选版，正式发布前需完成 [TESTING.md](TESTING.md) 中的其余验收。
 
 先从 [WinFsp 官方](https://github.com/winfsp/winfsp/releases/tag/v2.1) 安装 WinFsp 2.1。OpenAPFS MSI 不静默下载或安装第三方驱动。GUI 使用 WinFsp Launcher；便携版请使用管理员终端运行 `apfs-mount.exe`，无需注册 Launcher。GUI 暂提供中英核心操作和语言选择，技术错误保留原文。
 
@@ -25,9 +25,15 @@
 
 - 复用 GPT 64 位偏移、512/4096 扇区、APFS 4096 字节块、容器/卷选择、Unicode 名称和按范围读取。
 - 未知不兼容格式、加密卷、Fusion、非连续 checkpoint 描述树拒绝挂载。镜像仅支持原始平面数据；压缩 UDIF DMG、sparsebundle 不在范围内。
-- APFS 大于 2TB 的地址运算与超大文件需要独立验证。真实 4TB SSD 尚未验收；长路径也取决于 Windows 应用自身。
+- 4TiB 虚拟地址空间和跨 4GiB 文件偏移已通过单元测试；WOA 实盘读取/复制已验证 5GiB+257 字节稀疏文件、Unicode 和 384 字符相对路径。真实 4TB SSD 尚未验收；长路径仍取决于调用程序。
 - 上游包含符号链接、硬链接读取和 xattr 解析；Windows 端不完整暴露 APFS 权限/xattr，不能据此制作保真备份。Windows 禁止的名称及大小写冲突需要进一步兼容验证。
-- Windows 10/11 是目标平台；GitHub Windows Server runner 编译通过不等同于两个桌面版本均已实测。ARM64、x64、x86 均已加入构建与测试矩阵，仍需各架构构建及实机验收；尚无已验证二进制。
+- 三种架构已本地构建并加入云测试矩阵。ARM64 在 WOA 上完成真实 SSD 只读验收；x64/x86 仅完成 WOA 兼容环境中的构建和单元测试，Windows 10、Intel/AMD 实机及真实 32 位系统仍待验收。
+
+## 本地验证记录（2026-11-06）
+
+在 Windows 11 ARM64 / WinFsp 2.1 上，核心与挂载库 467 项测试通过，另有 1 项只读 CLI 回归通过。x64/x86 库测试也在 WOA 兼容环境通过；x86 WinFsp 原生长度溢出回归通过。
+
+128GB TOSHIBA APFS SSD 上的 2,058 个自建文件，在 Windows 读取、复制后的 SHA-256 全部与 macOS 清单相同。打开写句柄与新建请求均返回介质写保护；正常卸载后，macOS 再次核对全部哈希和原生链接/xattr，`fsck_apfs -n` 检查通过。盘内原有用户文件未参与测试。测试通过不代表生产级可靠，也不代表 Windows 已完整暴露 APFS 元数据。
 
 ## 开发和分期
 

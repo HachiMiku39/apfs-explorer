@@ -17,9 +17,15 @@ fn every_mutating_entry_point_refuses_and_preserves_the_image() {
         vec!["snapshot", "create", "--drive", "999", "--name", "no"],
         vec!["clone", "--image", path, "--src", "/a", "--dst", "/b"],
     ] {
-        let out = Command::new(env!("CARGO_BIN_EXE_apfs-mount")).args(&args).output().unwrap();
+        let out = Command::new(env!("CARGO_BIN_EXE_apfs-mount"))
+            .args(&args)
+            .output()
+            .unwrap();
         assert!(!out.status.success(), "write request succeeded: {args:?}");
-        assert!(String::from_utf8_lossy(&out.stderr).contains("v0.1 is read-only"), "wrong rejection: {out:?}");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("v0.1 is read-only"),
+            "wrong rejection: {out:?}"
+        );
         assert_eq!(std::fs::read(&image).unwrap(), original);
     }
 }

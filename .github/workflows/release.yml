@@ -61,15 +61,39 @@ jobs:
           $gui = Join-Path $env:GITHUB_WORKSPACE 'crates/apfs-explorer-gui'
           Copy-Item "$out/apfs-mount.exe" "$gui/apfs-mount.exe"
           Copy-Item "$out/${{ matrix.dll }}" "$gui/${{ matrix.dll }}"
-          @{ bundle = @{ resources = @('apfs-mount.exe', '${{ matrix.dll }}') } } |
+          $resources = @{
+            'apfs-mount.exe' = 'apfs-mount.exe'
+            '../../LICENSE' = 'LICENSE'
+            '../../NOTICE.md' = 'NOTICE.md'
+            '../../README.md' = 'README.md'
+            '../../ARCHITECTURE.md' = 'ARCHITECTURE.md'
+            '../../TESTING.md' = 'TESTING.md'
+            '../../SECURITY.md' = 'SECURITY.md'
+            '../../licenses/WinFsp-2.1.txt' = 'licenses/WinFsp-2.1.txt'
+          }
+          $resources['${{ matrix.dll }}'] = '${{ matrix.dll }}'
+          @{ bundle = @{ resources = $resources } } |
             ConvertTo-Json -Depth 4 | Set-Content "$gui/.openapfs-target.json" -Encoding utf8
           if (Test-Path "$out/bundle/msi") { Remove-Item "$out/bundle/msi" -Recurse -Force }
           Push-Location $gui
-          cargo tauri build --target '${{ matrix.target }}' --bundles msi --config .openapfs-target.json -- --locked
+          cargo tauri build --target '${{ matrix.target }}' --features custom-protocol --bundles msi --config .openapfs-target.json -- --locked
           if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed' }
           Pop-Location
       - name: Verify EXE and DLL architecture before labelling artifacts
         run: python scripts/verify_windows_arch.py --target ${{ matrix.target }} --directory target/${{ matrix.target }}/release
+      - name: Verify actual MSI payload against this build
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:GITHUB_WORKSPACE 'target/${{ matrix.target }}/release'
+          $msi = @(Get-ChildItem "$out/bundle/msi" -Filter *.msi)
+          if ($msi.Count -ne 1) { throw 'Expected one freshly built MSI' }
+          $extract = Join-Path $env:RUNNER_TEMP 'OpenAPFS-msi-payload'
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @('/a', $msi[0].FullName, '/qn', "TARGETDIR=$extract")
+          if ($p.ExitCode -ne 0) { throw "MSI extraction failed: $($p.ExitCode)" }
+          $gui = @(Get-ChildItem $extract -Recurse -Filter apfs-explorer.exe)
+          if ($gui.Count -ne 1) { throw 'Expected one GUI in MSI' }
+          python scripts/verify_msi_payload.py --target '${{ matrix.target }}' --build-dir $out --payload-dir $gui[0].DirectoryName
+          if ($LASTEXITCODE -ne 0) { throw 'MSI payload verification failed' }
       - name: Package ZIP, MSI, matching source and checksums
         shell: pwsh
         run: |
@@ -81,6 +105,8 @@ jobs:
             Copy-Item (Join-Path $out $name) dist/portable
           }
           Copy-Item README.md,ARCHITECTURE.md,TESTING.md,SECURITY.md,LICENSE,NOTICE.md dist/portable
+          New-Item -ItemType Directory -Force dist/portable/licenses | Out-Null
+          Copy-Item licenses/WinFsp-2.1.txt dist/portable/licenses
           $msi = @(Get-ChildItem "$out/bundle/msi" -Filter *.msi)
           if ($msi.Count -ne 1) { throw 'Expected exactly one freshly built MSI' }
           Copy-Item $msi[0].FullName "dist/$stem.msi"

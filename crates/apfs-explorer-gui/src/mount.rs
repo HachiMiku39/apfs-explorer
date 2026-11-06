@@ -182,11 +182,16 @@ pub fn unmount(drive: u32) -> Result<(), MountError> {
 
     // A successful launchctl status is not proof the drive disappeared.
     // Preserve tracking and show failure while the letter remains present.
-    let tracked = crate::drives::MOUNTED.lock().ok()
+    let tracked = crate::drives::MOUNTED
+        .lock()
+        .ok()
         .and_then(|g| g.iter().find(|(d, _)| *d == drive).map(|(_, l)| l.clone()));
     if let Some(letter) = tracked.as_ref() {
         if !wait_for_unmount(letter) {
-            return Err(MountError::Launchctl("stop", format!("{letter} is still mounted")));
+            return Err(MountError::Launchctl(
+                "stop",
+                format!("{letter} is still mounted"),
+            ));
         }
     } else if !any_ok {
         return Err(MountError::NotTracked(drive));
@@ -241,7 +246,12 @@ fn wait_for_drive(letter: &str, timeout_seconds: u32) -> bool {
 
 /// Confirm the drive letter disappeared before claiming unmount success.
 fn wait_for_unmount(letter: &str) -> bool {
-    let Some(ch) = letter.as_bytes().first().copied().filter(u8::is_ascii_uppercase) else {
+    let Some(ch) = letter
+        .as_bytes()
+        .first()
+        .copied()
+        .filter(u8::is_ascii_uppercase)
+    else {
         return false;
     };
     let bit = 1u32 << (ch - b'A');

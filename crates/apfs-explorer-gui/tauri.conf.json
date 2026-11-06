@@ -43,9 +43,16 @@
     "category": "Utility",
     "shortDescription": "Mount and browse APFS (Apple File System) volumes on Windows.",
     "longDescription": "APFS Explorer mounts Apple File System (APFS) USB drives and disk images on Windows as a drive letter (via WinFsp) and lets you browse them read-only. Single-EXE layout: the GUI (apfs-explorer.exe) spawns the elevated mount helper (apfs-mount.exe) installed alongside it.",
-    "resources": [
-      "apfs-mount.exe"
-    ],
+    "resources": {
+      "apfs-mount.exe": "apfs-mount.exe",
+      "../../LICENSE": "LICENSE",
+      "../../NOTICE.md": "NOTICE.md",
+      "../../README.md": "README.md",
+      "../../ARCHITECTURE.md": "ARCHITECTURE.md",
+      "../../TESTING.md": "TESTING.md",
+      "../../SECURITY.md": "SECURITY.md",
+      "../../licenses/WinFsp-2.1.txt": "licenses/WinFsp-2.1.txt"
+    },
     "windows": {
       "wix": {
         "language": "en-US",
