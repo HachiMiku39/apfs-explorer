@@ -757,7 +757,7 @@ impl Catalog {
         stream_oid: u64,
         size: usize,
     ) -> Result<Vec<u8>, ContainerError> {
-        self.read_stream_range(dev, stream_oid, size, 0, size)
+        self.read_stream_range(dev, stream_oid, size as u64, 0, size)
     }
 
     /// Bytes `offset..offset+len` of the stream (clamped to `size`), reading
@@ -767,66 +767,49 @@ impl Catalog {
         &self,
         dev: &mut D,
         stream_oid: u64,
-        size: usize,
-        offset: usize,
+        size: u64,
+        offset: u64,
         len: usize,
     ) -> Result<Vec<u8>, ContainerError> {
-        // A data stream cannot be larger than the device it lives on. Reject an
-        // implausible on-disk dstream/xattr size before allocating the output
-        // buffer, so a crafted size (up to ~16 EiB) cannot drive an OOM.
-        if size as u64 > dev.size() {
+        // File size and offsets stay 64-bit on x86; only this request's
+        // allocation/index deltas are usize. Never turn a high offset into EOF.
+        if size > dev.size() {
             return Err(oor());
         }
         if offset >= size || len == 0 {
             return Ok(Vec::new());
         }
-        let want_total = len.min(size - offset);
-        let range_end = offset + want_total;
-        let extents: Vec<(u64, u64, u64)> = self
-            .stream_extents_in(dev, stream_oid, offset as u64, range_end as u64)?
-            .into_iter()
-            .map(|e| (e.logical_addr, e.len, e.phys_block_num))
-            .collect();
-        let mut out = vec![0u8; want_total];
-        for (logical, extent_len, paddr) in extents {
-            let Ok(logical) = usize::try_from(logical) else {
-                continue;
-            };
-            // The part of this extent inside the requested range. Clamping
-            // to the range (which is within `size`) is also what keeps a
-            // crafted extent length (up to ~72 PB) from driving an OOM.
-            let extent_end =
-                logical.saturating_add(usize::try_from(extent_len).unwrap_or(usize::MAX));
+        let want = (len as u64).min(size - offset);
+        let range_end = offset.checked_add(want).ok_or_else(oor)?;
+        let extents = self.stream_extents_in(dev, stream_oid, offset, range_end)?;
+        let mut out = vec![0u8; usize::try_from(want).map_err(|_| oor())?];
+        for extent in extents {
+            let logical = extent.logical_addr;
+            let extent_end = logical.checked_add(extent.len).ok_or_else(oor)?;
             let start = logical.max(offset);
             let end = extent_end.min(range_end);
-            if start >= end {
+            if start >= end || extent.phys_block_num == 0 {
                 continue;
             }
-            // paddr == 0 encodes a sparse hole (APFS file_extent paddr=0
-            // semantics from the APFS specification). The output buffer is
-            // already zero-filled, so no disk read is required.
-            if paddr == 0 {
-                continue;
-            }
-            // Whole blocks around the part wanted: a raw disk node takes
-            // only requests of whole sectors, and the tail of a file or a
-            // piece of a compressed stream is rarely one.
             let bsz = u64::from(self.block_size);
-            let byte_offset = paddr
+            let byte_offset = extent
+                .phys_block_num
                 .checked_mul(bsz)
-                .and_then(|b| b.checked_add((start - logical) as u64))
+                .and_then(|base| base.checked_add(start - logical))
                 .ok_or_else(oor)?;
             let lo = byte_offset / bsz * bsz;
             let hi = byte_offset
-                .checked_add((end - start) as u64)
-                .map(|e| e.div_ceil(bsz) * bsz)
+                .checked_add(end - start)
+                .and_then(|end| end.div_ceil(bsz).checked_mul(bsz))
                 .ok_or_else(oor)?;
             let mut tmp = vec![0u8; usize::try_from(hi - lo).map_err(|_| oor())?];
             dev.read_content_at(lo, &mut tmp)?;
-            let skip = (byte_offset - lo) as usize;
-            out.get_mut(start - offset..end - offset)
+            let skip = usize::try_from(byte_offset - lo).map_err(|_| oor())?;
+            let count = usize::try_from(end - start).map_err(|_| oor())?;
+            let out_start = usize::try_from(start - offset).map_err(|_| oor())?;
+            out.get_mut(out_start..out_start + count)
                 .ok_or_else(oor)?
-                .copy_from_slice(tmp.get(skip..skip + (end - start)).ok_or_else(oor)?);
+                .copy_from_slice(tmp.get(skip..skip + count).ok_or_else(oor)?);
         }
         Ok(out)
     }
@@ -838,7 +821,9 @@ impl Catalog {
         dev: &mut D,
         inode_num: u64,
     ) -> Result<Vec<u8>, ContainerError> {
-        self.read_file_range(dev, inode_num, 0, usize::MAX)
+        let inode = self.inode_record(dev, inode_num)?.ok_or_else(oor)?;
+        let size = inode.dstream.as_ref().map_or(0, |d| d.size);
+        self.read_file_range(dev, inode_num, 0, usize::try_from(size).map_err(|_| oor())?)
     }
 
     /// Bytes `offset..offset+len` of the file's data stream, clamped to its
@@ -847,7 +832,7 @@ impl Catalog {
         &self,
         dev: &mut D,
         inode_num: u64,
-        offset: usize,
+        offset: u64,
         len: usize,
     ) -> Result<Vec<u8>, ContainerError> {
         use crate::jkey::APFS_TYPE_INODE;
@@ -863,7 +848,7 @@ impl Catalog {
             Ok(())
         })?;
         let inode = Inode::parse(&inode_val.ok_or_else(oor)?)?;
-        let size = inode.dstream.as_ref().map(|d| d.size).unwrap_or(0) as usize;
+        let size = inode.dstream.as_ref().map(|d| d.size).unwrap_or(0);
         self.read_stream_range(dev, inode.private_id, size, offset, len)
     }
 
@@ -1148,7 +1133,7 @@ impl Catalog {
             Ok(Some(self.read_stream(
                 dev,
                 ds.xattr_obj_id,
-                ds.size as usize,
+                usize::try_from(ds.size).map_err(|_| oor())?,
             )?))
         } else {
             Ok(Some(xdata))
@@ -1225,7 +1210,13 @@ impl Catalog {
         dev: &mut D,
         inode_num: u64,
     ) -> Result<Vec<u8>, ContainerError> {
-        self.read_file_decompressed_range(dev, inode_num, 0, usize::MAX)
+        let size = self.stat(dev, inode_num)?.size;
+        self.read_file_decompressed_range(
+            dev,
+            inode_num,
+            0,
+            usize::try_from(size).map_err(|_| oor())?,
+        )
     }
 
     /// Bytes `offset..offset+len` of the file's logical content, clamped to
@@ -1237,17 +1228,17 @@ impl Catalog {
         &self,
         dev: &mut D,
         inode_num: u64,
-        offset: usize,
+        offset: u64,
         len: usize,
     ) -> Result<Vec<u8>, ContainerError> {
-        use crate::decmpfs::decompress_range;
+        use crate::decmpfs::decompress_range_u64;
         use crate::xattr::XattrDstream;
 
         let inode = self.inode_record(dev, inode_num)?.ok_or_else(oor)?;
         if !inode.is_compressed() {
             // The same as `read_file_range`, without looking the inode up
             // a second time: this runs for every read the mount answers.
-            let size = inode.dstream.as_ref().map(|d| d.size).unwrap_or(0) as usize;
+            let size = inode.dstream.as_ref().map(|d| d.size).unwrap_or(0);
             return self.read_stream_range(dev, inode.private_id, size, offset, len);
         }
         let attr = self
@@ -1255,7 +1246,7 @@ impl Catalog {
             .ok_or(DecmpfsError::MissingAttribute)?;
         if !DecmpfsHeader::parse(&attr)?.uses_resource_fork() {
             let mut none: &[u8] = &[];
-            return Ok(decompress_range(&attr, 0, &mut none, offset, len)?);
+            return Ok(decompress_range_u64(&attr, 0, &mut none, offset, len)?);
         }
         let Some((flags, xdata)) = self.find_xattr(dev, inode_num, RESOURCE_FORK_ATTRIBUTE)? else {
             return Err(DecmpfsError::MissingResourceFork.into());
@@ -1269,10 +1260,10 @@ impl Catalog {
                 oid: ds.xattr_obj_id,
                 size,
             };
-            decompress_range(&attr, size, &mut stream, offset, len)
+            decompress_range_u64(&attr, size, &mut stream, offset, len)
         } else {
             let mut inline: &[u8] = &xdata;
-            Ok(decompress_range(
+            Ok(decompress_range_u64(
                 &attr,
                 xdata.len(),
                 &mut inline,
@@ -1294,9 +1285,13 @@ struct XattrStream<'a, D: BlockDevice> {
 impl<D: BlockDevice> crate::decmpfs::ForkBytes for XattrStream<'_, D> {
     type Error = ContainerError;
     fn read(&mut self, offset: usize, len: usize) -> Result<Vec<u8>, ContainerError> {
-        let bytes = self
-            .catalog
-            .read_stream_range(self.dev, self.oid, self.size, offset, len)?;
+        let bytes = self.catalog.read_stream_range(
+            self.dev,
+            self.oid,
+            self.size as u64,
+            offset as u64,
+            len,
+        )?;
         if bytes.len() != len {
             return Err(DecmpfsError::Parse(ParseError::Short {
                 at: offset,
@@ -2111,6 +2106,35 @@ mod tests {
     // A ranged read touches only the extents inside the range, and only the
     // part of each that the range covers.
     #[test]
+    fn small_reads_across_four_gib_keep_the_full_file_offset() {
+        struct LargeDev(MemDev);
+        impl BlockDevice for LargeDev {
+            fn size(&self) -> u64 {
+                4u64 << 40
+            }
+            fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError> {
+                self.0.read_at(offset, buf)
+            }
+        }
+        const HIGH: u64 = 1u64 << 32;
+        let root = build_extent_leaf(77, &[(HIGH - 4096, 4096, 5), (HIGH, 4096, 6)]);
+        let mut inner = MemDev::new(4096);
+        inner.fill_block(5, 0x11);
+        inner.fill_block(6, 0x22);
+        let mut dev = LargeDev(inner);
+        let cat = catalog_from_leaf(root);
+        let bytes = cat
+            .read_stream_range(&mut dev, 77, HIGH + 4096, HIGH - 8, 16)
+            .unwrap();
+        assert_eq!(&bytes[..8], &[0x11; 8]);
+        assert_eq!(&bytes[8..], &[0x22; 8]);
+        let tail = cat
+            .read_stream_range(&mut dev, 77, HIGH + 4096, HIGH + 4093, 16)
+            .unwrap();
+        assert_eq!(tail, vec![0x22; 3]);
+    }
+
+    #[test]
     fn read_stream_range_reads_only_what_the_range_covers() {
         const BSZ: usize = 4096;
         const STREAM_OID: u64 = 77;
@@ -2122,10 +2146,10 @@ mod tests {
         dev.fill_block(5, 0x11);
         dev.fill_block(6, 0x22);
         let cat = catalog_from_leaf(raw_root);
-        let size = 2 * BSZ;
+        let size = (2 * BSZ) as u64;
 
         let across = cat
-            .read_stream_range(&mut dev, STREAM_OID, size, BSZ - 96, 200)
+            .read_stream_range(&mut dev, STREAM_OID, size, (BSZ - 96) as u64, 200)
             .expect("across the extent boundary");
         assert_eq!(across.len(), 200);
         assert!(across[..96].iter().all(|&b| b == 0x11));

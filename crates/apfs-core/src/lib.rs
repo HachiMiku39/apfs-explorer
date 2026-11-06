@@ -9,6 +9,7 @@ pub use block_device::{
 };
 
 pub mod gpt;
+pub mod windows_arch;
 
 pub mod endian;
 pub use endian::ParseError;

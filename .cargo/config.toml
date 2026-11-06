@@ -1,0 +1,5 @@
+# winfsp-sys 0.12.1 passes the invalid Clang triple x86-pc-windows-msvc.
+# bindgen appends its target-specific environment arguments after builder args.
+# Correct only the i686 target, without changing the dependency or its ABI.
+[env]
+BINDGEN_EXTRA_CLANG_ARGS_i686_pc_windows_msvc = "--target=i686-pc-windows-msvc"

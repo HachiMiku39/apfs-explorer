@@ -1,387 +1,58 @@
-<p align="center">
-  <img src="assets/logo.png" alt="APFS Explorer" width="120" height="120" />
-</p>
+# OpenAPFS for Windows — v0.1 read-only development
 
-<h1 align="center">APFS Explorer for Windows</h1>
+免费、开源的 Windows APFS 用户态工具，Fork 自 [APFS Explorer](https://github.com/enesilhaydin/apfs-explorer)，保留其版权与 GPL-3.0-only 许可证。Rust 解析器、WinFsp 盘符接口及 Tauri GUI 均复用上游。修改日期：2026-11-06。
 
-<p align="center"><strong>Open-source APFS read-write for Windows. Audit-verified. Real-disk tested.</strong></p>
+**本 Fork v0.1 仅允许读取。任何 `--writable`、快照创建/删除/回滚、克隆写入和物理磁盘写句柄均被拒绝。** 上游的写入声明、历史测试及 CHANGELOG 不代表本 Fork 已通过验证。请先使用可丢弃镜像；CI 通过也不代表生产级可靠。
 
-> [!WARNING]
-> **Experimental software - do not use on important data.** APFS Explorer is a
-> young, independent APFS implementation. The read path is well-exercised, but
-> **write support is experimental and can corrupt a volume.** Always keep backups,
-> prefer read-only mounts, and never make this tool the only copy of data you care
-> about. Provided "as is", without warranty of any kind (see GPL-3.0 §15-16).
+## 获取与运行
 
----
+正式发布采用 [GitHub Actions](https://github.com/HachiMiku39/apfs-explorer/actions)；ARM64、x64、x86 三套作业分别产生便携 ZIP、MSI、对应源码 ZIP 和 SHA256SUMS，并检查 EXE/DLL 的 PE 架构。本次经用户明确授权，在 Parallels Windows 11 ARM64 内完成本地离线构建，不能记为云编译成功。当前仍是开发候选版，正式发布前需完成 [TESTING.md](TESTING.md) 中的其余验收。
 
-[![Release](https://img.shields.io/github/v/release/enesilhaydin/apfs-explorer?include_prereleases&sort=semver)](https://github.com/enesilhaydin/apfs-explorer/releases)
-[![Downloads](https://img.shields.io/github/downloads/enesilhaydin/apfs-explorer/total)](https://github.com/enesilhaydin/apfs-explorer/releases)
-[![Stars](https://img.shields.io/github/stars/enesilhaydin/apfs-explorer?style=social)](https://github.com/enesilhaydin/apfs-explorer/stargazers)
-[![License](https://img.shields.io/badge/license-GPL--3.0--only-blue)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.87+-orange)](https://www.rust-lang.org/)
-[![WinFsp](https://img.shields.io/badge/WinFsp-2.1+-green)](https://winfsp.dev/)
+先从 [WinFsp 官方](https://github.com/winfsp/winfsp/releases/tag/v2.1) 安装 WinFsp 2.1。OpenAPFS MSI 不静默下载或安装第三方驱动。GUI 使用 WinFsp Launcher；便携版请使用管理员终端运行 `apfs-mount.exe`，无需注册 Launcher。GUI 暂提供中英核心操作和语言选择，技术错误保留原文。
 
----
-
-## Quick Install
-
-1. Download the latest `apfs-explorer-setup.exe` from the [Releases page](https://github.com/enesilhaydin/apfs-explorer/releases).
-2. Run it as administrator - WinFsp is auto-installed if absent.
-3. Launch **APFS Explorer** (it asks for administrator rights once, when it opens), pick your APFS USB drive, and click **Mount** - it appears as a drive letter you can browse. The window shows the version and build under its title.
-
----
-
-## Features
-
-| Feature | Status |
-|---|---|
-| Read-write mount (drive letter), read-only by default | ✅ Full |
-| Writes change only the blocks they touch (append, overwrite in the middle, truncate) | ✅ Full |
-| Files macOS stored compressed (zlib, LZVN, LZFSE, LZBITMAP): read; written back uncompressed | ✅ Full |
-| Clones macOS made: read; writing to one side copies only that file's stream | ✅ Full |
-| Many operations to one checkpoint (write grouping, at most ~1 s open) | ✅ Full |
-| Snapshot create / list / delete / revert, and mounting one read-only | ✅ Full |
-| Clone (reflink) via CLI / image | ✅ Full |
-| Symlink + Windows reparse round-trip | ✅ Full |
-| BSD flags (hidden, immutable, append-only) | ✅ Full |
-| NFD normalization + full Unicode case-fold | ✅ Full |
-| Image-mount mode (`.img` / `.dmg` raw, whole disk or bare container) | ✅ Full |
-| CLI subcommands (mount, snapshot, clone, volume list) | ✅ Full |
-| Desktop GUI (detect / pick a volume or snapshot / mount / browse / unmount) | ✅ Full |
-| Audit-verified against reference implementations | ✅ Full |
-| Real-disk validated against macOS (fsck-clean, macOS keeps editing what we wrote) | ✅ Full |
-| Hard links: read | ✅ Full |
-| Hard links: create | 🚧 Library only; WinFsp has no hard-link support |
-| FileVault / sealed / Fusion Drive | 🚫 Out of scope |
-
----
-
-## Performance
-
-APFS Explorer (user space, through WinFsp) against NTFS on the same USB
-drive (a 64 GB KIOXIA TransMemory stick on USB 3, Windows 11 Pro 25H2): the
-drive formatted APFS on a Mac and mounted with `apfs-mount --drive N
---writable`, then formatted NTFS by Windows. PowerShell `Copy-Item` /
-`Rename-Item` / `Remove-Item` and .NET `FileStream`; median of three runs.
-A write is timed until it is on the drive (the APFS mount stopped, which
-commits its last group; NTFS flushed). "Cold" reads come after a remount
-(APFS) or a dismount (NTFS).
-
-| Workload | APFS Explorer | NTFS |
-|---|---:|---:|
-| Copy 300 files of 4 KiB into a folder | 1.7 s | 4.6 s |
-| Rename those 300 files | 233 ms | 1.8 s |
-| Delete 150 of them | 118 ms | 531 ms |
-| Copy 2000 files of 4 KiB into a folder | 4.8 s | 31.2 s |
-| Copy a 256 MiB file | 18.3 s | 15.8 s |
-| Copy a 1 GiB file | 79 s | 72 s |
-| 1000 scattered 4 KiB writes into the 256 MiB file | 1.9 s | 3.7 s |
-| List a 2000-file folder, cold / warm | 135 / 46 ms | 68 / 33 ms |
-| Read the edited 256 MiB file in 4 KiB requests, cold / warm | 3.5 / 3.6 s | 2.2 / 0.27 s |
-| Read 1 GiB in 1 MiB requests, cold | 6.6 s | 5.3 s |
-| Hash 2000 small files, cold | 4.9 s | 3.8 s |
-
-Why it goes both ways:
-
-- Windows mounts NTFS on a removable drive for quick removal, without
-  write caching, so each metadata change waits for the drive. The APFS
-  mount gathers changes into write groups and commits a group at most
-  about a second after its last operation (and when you unmount), so many
-  small operations share one write to the drive.
-- Large files: every write and read crosses from the kernel to the
-  user-space process and back, and a 1 GiB copy writes about 10% slower
-  than NTFS.
-- APFS writes an edit to new blocks (copy-on-write), so a file edited in
-  many places is read from several places on the drive; NTFS edits in
-  place. And Windows does not cache file data on the mount (with WinFsp's
-  data caching on, copies of 4 GiB files hung in the kernel), so a file
-  read twice is read from the drive twice, where NTFS answers the second
-  time from memory.
-
-Memory: the mount process holds a few MB of its own idle. Its metadata
-cache, capped at 64 MiB, now outlives each commit, so the process grows
-to about 80 MB through a 5-minute mixed workload (12 600 operations) and
-stays there, and reaches about 110 MB at most in the largest tests
-(100 000 files in one folder).
-
----
-
-## Tested Platforms
-
-| Platform | Architecture | WinFsp | Status |
-|---|---|---|---|
-| Windows 11 Pro 25H2 (build 26200) | AMD64 | 2.1 (2025) | ✅ Primary (dev + test) |
-| Windows 10 21H2 | AMD64 | 2.1 | ⚠️ Expected (same WinFsp 2.1 ABI; not regularly tested) |
-| macOS 26 | arm64 | - | ✅ Library crates; fsck and differential tests against macOS, on images and a real USB drive |
-
----
-
-## Architecture
-
-```mermaid
-graph TD
-  GUI["apfs-explorer.exe (Tauri GUI)"] -->|start via WinFsp Launcher| MOUNT
-  EXPLORER["Windows Explorer (drive letter)"] <--> WINFSP["WinFsp driver"]
-  WINFSP <-->|filesystem callbacks| MOUNT["apfs-mount.exe (winfsp-host)"]
-  MOUNT -->|raw read / write| DISK[("APFS USB / .img")]
-  MOUNT --> APFS["apfs (FsView, high-level read)"]
-  MOUNT --> WRITE["apfs-write (copy-on-write transactions)"]
-  WRITE --> APFS
-  APFS --> CORE["apfs-core (on-disk structs, B-tree, block device)"]
+```powershell
+# 使用备份镜像进行初次试验
+.\apfs-mount.exe volume list --image C:\APFSTest\disk.img --json
+.\apfs-mount.exe --image C:\APFSTest\disk.img --mount M:
+# 或明确选择磁盘及卷（盘号必须来自本次设备发现）
+.\apfs-mount.exe volume list --drive 2 --json
+.\apfs-mount.exe --drive 2 --volume-index 0 --mount M:
 ```
 
-Crate layering: `apfs-core` (on-disk format + B-tree engine) is the base; `apfs`
-builds the read-only `FsView` on top; `apfs-write` adds copy-on-write mutation;
-`winfsp-host` (the `apfs-mount.exe` binary) wires all three into WinFsp callbacks.
-The GUI never links the engine: it starts `apfs-mount.exe` through the WinFsp
-Launcher so the drive is visible to a non-elevated Explorer.
+在资源管理器打开 M:，将文件复制到 Windows 本地磁盘。挂载终端按 Enter 卸载；GUI 点“卸载”。停止复制、完成卸载后再断开设备；GUI 在挂载中或仍有已跟踪盘符时会阻止关闭，请先逐一卸载；卸载失败时保留跟踪状态并显示错误。不会将“卸载虚拟盘符”等同于物理设备弹出。
 
----
+## 范围和限制
 
-## CLI Usage
+- 复用 GPT 64 位偏移、512/4096 扇区、APFS 4096 字节块、容器/卷选择、Unicode 名称和按范围读取。
+- 未知不兼容格式、加密卷、Fusion、非连续 checkpoint 描述树拒绝挂载。镜像仅支持原始平面数据；压缩 UDIF DMG、sparsebundle 不在范围内。
+- 4TiB 虚拟地址空间和跨 4GiB 文件偏移已通过单元测试；WOA 实盘读取/复制已验证 5GiB+257 字节稀疏文件、Unicode 和 384 字符相对路径。真实 4TB SSD 尚未验收；长路径仍取决于调用程序。
+- 上游包含符号链接、硬链接读取和 xattr 解析；Windows 端不完整暴露 APFS 权限/xattr，不能据此制作保真备份。Windows 禁止的名称及大小写冲突需要进一步兼容验证。
+- 三种架构已本地构建并加入云测试矩阵。ARM64 在 WOA 上完成真实 SSD 只读验收；x64/x86 仅完成 WOA 兼容环境中的构建和单元测试，Windows 10、Intel/AMD 实机及真实 32 位系统仍待验收。
 
-```sh
-# Mount physical disk N (from \\.\PhysicalDriveN) at drive letter M: (read-only)
-apfs-mount --drive 2 --mount M:
+## 本地验证记录（2026-11-06）
 
-# Mount a raw .img / .dmg at an auto-assigned letter
-apfs-mount --image disk.img
+在 Windows 11 ARM64 / WinFsp 2.1 上，核心与挂载库 467 项测试通过，另有 1 项只读 CLI 回归通过。x64/x86 库测试也在 WOA 兼容环境通过；x86 WinFsp 原生长度溢出回归通过。
 
-# Opt in to read+write (default is read-only)
-apfs-mount --drive 2 --mount M: --writable
+128GB TOSHIBA APFS SSD 上的 2,058 个自建文件，在 Windows 读取、复制后的 SHA-256 全部与 macOS 清单相同。打开写句柄与新建请求均返回介质写保护；正常卸载后，macOS 再次核对全部哈希和原生链接/xattr，`fsck_apfs -n` 检查通过。盘内原有用户文件未参与测试。测试通过不代表生产级可靠，也不代表 Windows 已完整暴露 APFS 元数据。
 
-# A container holds several volumes; the default is the user data volume.
-# Pick another by UUID, role or index (see `volume list`):
-apfs-mount --drive 2 --volume-role system
-apfs-mount --image disk.img --volume-index 1
-apfs-mount --image disk.img --volume-uuid 1F2E3D4C-5B6A-7980-A1B2-C3D4E5F60718
+## 开发和分期
 
-# Mount the volume as one of its snapshots holds it (always read-only)
-apfs-mount --drive 2 --snapshot before-edit
-apfs-mount --drive 2 --snapshot-xid 0x1a2
+[研究与复用](docs/RESEARCH.md) · [架构](ARCHITECTURE.md) · [验证矩阵](TESTING.md) · [安全](SECURITY.md)
 
-# One-shot subcommands (no WinFsp needed). --image takes a whole-disk image
-# (GPT) or a bare container; the snapshot ones also take --drive N, a drive
-# that is not mounted (they refuse one that is):
-apfs-mount volume   list   --image disk.img
-apfs-mount volume   list   --drive 2 --json     # also lists each volume's snapshots
-apfs-mount snapshot list   --drive 2
-apfs-mount snapshot create --image disk.img --name before-edit
-apfs-mount snapshot delete --drive 2 --xid 0x1a2   # xid as `snapshot list` prints it
-apfs-mount snapshot revert --image disk.img --xid 0x1a2
-apfs-mount clone           --image disk.img --src /a.txt --dst /b.txt
-```
+v0.1 完成只读保护和云构建后，先验证镜像在 Windows 的挂载/复制/卸载，再验收真实设备只读。后续写入阶段仅在可丢弃普通镜像上审查现有 `apfs-write`，覆盖创建/删除/移动/重命名、随机覆盖/追加、截断/扩展、分配回收、checkpoint/flush、故障恢复。真实磁盘写入必须另有明确授权；v0.1 没有解除限制的开关。
 
----
+许可证见 [LICENSE](LICENSE)；依赖许可证由 `cargo deny --locked check licenses` 检查，保留第三方声明。禁止以关闭校验或强改元数据掩盖错误。
 
-## Use as a Rust Library
+## Windows 架构
 
-```toml
-# Cargo.toml - not yet published to crates.io; use a git dependency
-[dependencies]
-apfs = { git = "https://github.com/enesilhaydin/apfs-explorer" }
-apfs-core = { git = "https://github.com/enesilhaydin/apfs-explorer" }
-```
-
-```rust
-use apfs::FsView;
-use apfs_core::block_device::{BlockDevice, FileBlockDeviceRw, WritableOffsetBlockDevice};
-use apfs_core::gpt::find_apfs_container;
-
-// A whole-disk image (GPT) holds the container in a partition; a bare
-// container image starts with it.
-let mut disk = FileBlockDeviceRw::open_rw("disk.img")?;
-let (offset, length) = match find_apfs_container(&mut disk, 512) {
-    Ok(range) => (range.offset, range.length),
-    Err(_) => (0, disk.size()),
-};
-let mut fs = FsView::open(WritableOffsetBlockDevice::new(disk, offset, length))?;
-for entry in fs.read_dir("/")? {
-    println!("{}", entry.name);
-}
-let head = fs.read("/notes.txt", 0, 4096)?; // only the bytes asked for
-```
-
-The full program is `crates/apfs/examples/list_dir.rs`
-(`cargo run -p apfs --example list_dir -- disk.img /`). Writing goes through
-`apfs_write` (`Transaction`, `write_file`, `write_range`, `create_snapshot`, ...).
-Run `cargo doc --open -p apfs-core -p apfs -p apfs-write` for the full API.
-
----
-
-## Desktop App
-
-The desktop app (`apfs-explorer.exe`) is a single-window GUI that lists detected
-APFS disks and disk images.
-
-- **Detected drives** are listed automatically; click **Mount** to attach one as
-  a drive letter (the app, elevated once when it opens, starts
-  `apfs-mount.exe` through the WinFsp launcher, so the drive is visible to
-  Explorer).
-- **Mounted volumes** show their drive letter with **Open in Explorer** and
-  **Unmount** actions.
-- Mounts are **read-only by default**; writing is an explicit opt-in.
-
----
-
-## Installation Details
-
-### WinFsp Note
-
-WinFsp (`winfsp.sys`) is a signed kernel driver and cannot be embedded in the installer directly.
-The Burn bundle chains the official WinFsp MSI (sourced from <https://winfsp.dev/rel/>) and installs it
-silently on first run when absent. No separate download is needed.
-
-### Known Limitations
-
-- Creating hard links and FSCTL clones from Windows is not possible: WinFsp
-  has no hard-link support. The library can create hard links.
-- Writing to a file macOS stored compressed writes it back uncompressed (as
-  macOS itself does on the first write to one).
-- Extended attributes (xattrs) are not shown to Windows programs.
-- Write support requires WinFsp 2.1 or later.
-- FileVault / sealed volumes / Fusion Drive: not supported (out of scope).
-- Library on macOS against a raw disk device (`/dev/rdiskN`): the device
-  refuses `F_FULLFSYNC`, which `FileBlockDeviceRw::flush_data` uses, so a
-  commit fails at its first durability barrier. Wrap the device and issue
-  `DKIOCSYNCHRONIZE` instead (`crates/apfs-write/tests/real_usb.rs` shows
-  how). The Windows mount is not affected.
-
-### Uninstall
-
-Use **Windows Settings → Apps → "APFS Explorer for Windows" → Uninstall**.
-The WinFsp launcher-class registration is removed with the product MSI.
-WinFsp itself is marked `Permanent="yes"` in the bundle; it is not removed on
-uninstall (other applications may depend on it).
-
----
-
-## FAQ
-
-**Is write safe?**
-It is designed to be, and it is tested hard, but it is still experimental (see
-the warning at the top): keep backups. Every change is copy-on-write: new
-blocks are written and made durable before the checkpoint that points to them,
-so an interrupted write leaves the volume at the previous checkpoint, never
-half-written. Each change is checked against macOS `fsck_apfs`, and against
-macOS itself editing what we wrote, in the test suites.
-
-**Will I lose data on unplug?**
-Use the app's **Unmount** action or the safely-remove-hardware flow first.
-Operations are grouped and committed together, at most about a second after
-the last one (and at once on unmount or a flush). Pulling the drive loses the
-operations of the group still open, and anything a program has not yet
-written out; the volume itself stays consistent at the last commit, and the
-next mount starts from there. The mount notices the drive is gone within a
-second and unmounts itself. Measured by pulling a USB drive three times in
-the middle of a stream of writes: what was lost was the last 0.2 to 0.6 s of
-writes, every file written before them read back intact, and none was
-half-written.
-
-**Does it work on Apple Silicon Mac-formatted volumes?**
-Yes. APFS volumes formatted on Apple Silicon Macs use the same on-disk format
-as Intel Macs.
-
-**Snapshot compatibility?**
-Snapshots created by APFS Explorer are compatible with macOS: `diskutil apfs
-listSnapshots` shows them by name, and the volume passes `fsck_apfs` with them.
-Writing to a volume that has snapshots (Time Machine's included) leaves them
-as they are: each keeps the files as they were when it was taken, and the app
-can mount any of them read-only.
-
-**Hard links?**
-Reading existing hard links works. Creating them from Windows does not: WinFsp
-has no hard-link support. The library can create them.
-
-**Which APFS versions are supported?**
-Unencrypted volumes written by macOS 10.13 through macOS 26, including
-compressed files (zlib, LZVN, LZFSE, LZBITMAP), clones, snapshots and
-NFD-normalized, case-insensitive or case-sensitive names.
-
-**Read-only mode?**
-Read-only is the **default** - both the GUI and `apfs-mount` mount read-only
-unless you explicitly opt in to writing, so the volume is protected out of the box.
-
----
-
-## Development
-
-```sh
-# The app bundles apfs-mount.exe, so it builds through `xtask package` (below);
-# everything else builds directly:
-cargo build --workspace --exclude apfs-explorer-gui
-cargo test -p apfs-core -p apfs -p apfs-write --lib   # what CI runs
-cargo fmt --all -- --check
-cargo clippy -p apfs-core -p apfs -p apfs-write --lib  # advisory in CI
-```
-
-The integration suites build APFS images with macOS tools and check them with
-`fsck_apfs`, so they run on a Mac:
-
-```sh
-APFS_WRITE_SCRATCH=1 cargo test -p apfs-core -p apfs -p apfs-write -p winfsp-host \
-  --features apfs-write/write -- --include-ignored --test-threads=1
-```
-
-On Windows, `scripts/win-batch.ps1` drives a mounted image through Explorer-style
-operations; `scripts/win-batch-verify.py` then checks the result on a Mac. See
-`docs/refs/testing.md`.
-
-### Building the Installer (Windows host required)
-
-```sh
-# 1. Stage the official WinFsp MSI (download from https://winfsp.dev/rel/)
-copy winfsp-2.x.msi dist\winfsp.msi
-
-# 2. Build binaries + MSI + Burn bundle
-cargo run -p xtask -- package
-# Output: dist\apfs-explorer-setup.exe
-```
-
-`xtask package` builds the Tauri product MSI (`cargo tauri build`) and wraps it in
-the WiX Burn bundle that chains WinFsp. Prerequisites on the Windows host: the
-Tauri CLI (`cargo install tauri-cli`) and the WiX v3 toolset (`candle.exe`,
-`light.exe`) on PATH. On macOS the command prints the full recipe and exits cleanly.
-
----
-
-## Acknowledgments
-
-This project stands on the shoulders of prior art and published specifications:
-
-| Project | Author | Role |
+| 包名后缀 | 程序架构 | 目标 |
 |---|---|---|
-| [linux-apfs-rw](https://github.com/Ernesto-Fernandez/linux-apfs-rw) | Ernesto Fernández | Write-path reference, RW kernel module |
-| [apfsprogs](https://github.com/Ernesto-Fernandez/apfsprogs) | Ernesto Fernández | fsck / mkfs userspace tools |
-| [apfs-fuse](https://github.com/sgan81/apfs-fuse) | sgan81 | Independent C++ FUSE reader |
-| [libfsapfs](https://github.com/libyal/libfsapfs) | libyal | Struct layout reference |
-| [go-apfs](https://github.com/blacktop/go-apfs) | blacktop | Go reader, practical usage examples |
-| [WinFsp](https://github.com/winfsp/winfsp) | Bill Zissimopoulos | Windows filesystem driver framework |
-| APFS File System Reference | Apple Inc. | Published file system specification (PDF) |
+| `windows-arm64` | 原生 ARM64 | ARM64 Windows 10/11 |
+| `windows-x64` | 64 位 Intel/AMD | x64 Windows 10/11 |
+| `windows-x86` | 32 位 x86 | Windows 10 32 位，以及 64 位系统的 32 位兼容环境 |
 
----
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution guide, code style, and PR process.
-
----
-
-## License
-
-GPL-3.0-only. See [LICENSE](LICENSE).
-
----
-
-## Sponsor
-
-If this project saves you money on proprietary APFS drivers, consider sponsoring:
-
-[![GitHub Sponsors](https://img.shields.io/github/sponsors/enesilhaydin?label=Sponsor&logo=GitHub)](https://github.com/sponsors/enesilhaydin)
-
----
-
-## Star History
-
-[![Star History](https://img.shields.io/github/stars/enesilhaydin/apfs-explorer?style=social)](https://github.com/enesilhaydin/apfs-explorer/stargazers)
+Windows 11 没有 32 位 x86 操作系统版本；`windows-x86` 表示程序位数。
+ARM 指 ARM64，不包含 ARM32。请选择与系统匹配的原生包，WinFsp 驱动仍需安装。
+构建输出示例：`OpenAPFS-0.1.0-windows-arm64.zip` / `.msi`，其余架构同理。
+32 位进程也使用 64 位文件偏移，超大文件按块读取；需要一次性装入内存的属性或
+资源叉若超出进程可表示范围则明确报错。详见 [多架构说明](docs/WINDOWS_ARCHITECTURES.md)。

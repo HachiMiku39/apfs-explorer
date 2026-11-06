@@ -437,6 +437,7 @@ impl<D: BlockDevice> FsView<D> {
         self.dev
             .read_at(vol_paddr.saturating_mul(self.bsz as u64), &mut raw)?;
         let vol = VolumeSuperblock::parse(&raw)?;
+        vol.ensure_read_supported()?;
         if vol.is_encrypted() {
             return Err(FsError::Encrypted {
                 name: vol.name.clone(),
@@ -503,6 +504,7 @@ impl<D: BlockDevice> FsView<D> {
         let mut raw = vec![0u8; bsz];
         dev.read_at(found.sblock_oid.saturating_mul(bsz as u64), &mut raw)?;
         let frozen = VolumeSuperblock::parse(&raw)?;
+        frozen.ensure_read_supported()?;
         let catalog = Catalog::open_at(&mut dev, &frozen, vol.omap_oid, found.xid, bsz as u32)?;
         tracing::info!(name = %found.name, xid = found.xid, "opened APFS snapshot");
         Ok(Self::from_parts(
@@ -598,13 +600,15 @@ impl<D: BlockDevice> FsView<D> {
                 None => continue,
             };
             let mut raw = vec![0u8; bsz];
-            dev.read_at(paddr * block_size as u64, &mut raw)?;
-            match VolumeSuperblock::parse(&raw) {
-                Ok(vsb) => cands.push(Cand { index, paddr, vsb }),
-                // A volume that fails to parse is skipped, not fatal - the
-                // others may still be mountable.
-                Err(_) => continue,
-            }
+            let offset = paddr
+                .checked_mul(u64::from(block_size))
+                .ok_or(ContainerError::Parse(apfs_core::ParseError::BadField {
+                    field: "volume physical address",
+                    value: paddr,
+                }))?;
+            dev.read_at(offset, &mut raw)?;
+            let vsb = VolumeSuperblock::parse(&raw)?;
+            cands.push(Cand { index, paddr, vsb });
         }
         if cands.is_empty() {
             return Err(FsError::NoVolume);
@@ -648,6 +652,7 @@ impl<D: BlockDevice> FsView<D> {
         // A FileVault volume stores ciphertext in its file extents. We hold no
         // keybag material, so every read would return garbage that is
         // indistinguishable from real content. Refuse the mount instead.
+        vol.ensure_read_supported()?;
         if vol.is_encrypted() {
             tracing::warn!(
                 name = %vol.name,
@@ -881,9 +886,6 @@ impl<D: BlockDevice> FsView<D> {
         let ino = match self.lookup(path)? {
             Some(i) => i,
             None => return Err(FsError::NotFound(path.to_string())),
-        };
-        let Ok(offset) = usize::try_from(offset) else {
-            return Ok(Vec::new());
         };
         Ok(self
             .catalog

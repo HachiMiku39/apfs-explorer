@@ -222,6 +222,21 @@ impl VolumeSuperblock {
         })
     }
 
+    /// The reader only implements these incompatible format features.
+    /// Other bits (including incomplete restore and rolled encryption) refuse
+    /// mounting even if the basic superblock can be decoded for discovery.
+    pub fn ensure_read_supported(&self) -> Result<(), ContainerError> {
+        const SUPPORTED: u64 = APFS_INCOMPAT_CASE_INSENSITIVE
+            | APFS_INCOMPAT_NORMALIZATION_INSENSITIVE
+            | APFS_INCOMPAT_SEALED_VOLUME;
+        if self.incompatible_features & !SUPPORTED != 0 {
+            return Err(ContainerError::UnsupportedVolume {
+                incompatible_features: self.incompatible_features,
+            });
+        }
+        Ok(())
+    }
+
     /// True when the volume's file data is encrypted (FileVault).
     ///
     /// Encryption is a non-goal: the point of surfacing it is to refuse the
@@ -310,6 +325,21 @@ mod tests {
         let c = fletcher64(&b);
         b[0..8].copy_from_slice(&c.to_le_bytes());
         b
+    }
+
+    #[test]
+    fn unsupported_incompatible_features_refuse_reading() {
+        for bit in [0x2u64, 0x4, 0x10, 1 << 63] {
+            let mut b = make_apsb(0x40, "Unsupported");
+            b[56..64].copy_from_slice(&bit.to_le_bytes());
+            let c = fletcher64(&b);
+            b[..8].copy_from_slice(&c.to_le_bytes());
+            let v = VolumeSuperblock::parse(&b).unwrap();
+            assert!(matches!(
+                v.ensure_read_supported(),
+                Err(ContainerError::UnsupportedVolume { .. })
+            ));
+        }
     }
 
     #[test]

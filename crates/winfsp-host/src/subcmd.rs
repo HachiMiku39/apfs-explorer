@@ -225,6 +225,7 @@ fn open_container_ro(image: &str) -> Result<OffsetBlockDevice<FileBlockDevice>, 
 fn open_container_rw(
     image: &str,
 ) -> Result<OffsetBlockDevice<apfs_core::block_device::FileBlockDeviceRw>, String> {
+    crate::safety::require_read_only(true).map_err(str::to_string)?;
     let mut dev = FileBlockDeviceRw::open_rw(image).map_err(|e| format!("open rw {image}: {e}"))?;
     let (base, len) = container_range(&mut dev)?;
     Ok(OffsetBlockDevice::new(dev, base, len))
@@ -292,8 +293,14 @@ fn txn_err(e: TxnError) -> i32 {
 // ---------------------------------------------------------------------------
 
 fn run_snapshot(target: &Target, op: SnapOp) -> i32 {
+    if !matches!(op, SnapOp::List) {
+        eprintln!("{}", crate::safety::WRITE_DISABLED);
+        return 1;
+    }
     let done = match target {
-        Target::Image(path) => open_container_rw(path).and_then(|dev| snapshot_on(dev, op)),
+        Target::Image(path) => open_container_ro(path).and_then(|dev| {
+            snapshot_on(apfs_core::block_device::ReadOnlyBlockDevice::new(dev), op)
+        }),
         Target::Drive(n) => snapshot_on_drive(*n, op),
     };
     match done {
@@ -354,8 +361,9 @@ fn snapshot_on_drive(_n: u32, _op: SnapOp) -> Result<(), String> {
 /// written under it.
 #[cfg(windows)]
 fn snapshot_on_drive(n: u32, op: SnapOp) -> Result<(), String> {
-    let mut pd = crate::winraw::PhysicalDrive::open_exclusive_rw(n)
-        .map_err(|e| format!("open PhysicalDrive{n} rw: {e}"))?;
+    crate::safety::require_read_only(!matches!(op, SnapOp::List)).map_err(str::to_string)?;
+    let mut pd = crate::winraw::PhysicalDrive::open(n)
+        .map_err(|e| format!("open PhysicalDrive{n} read-only: {e}"))?;
     let sec = pd.sector();
     let range = crate::gpt::find_apfs_container(&mut pd, sec)
         .map_err(|e| format!("find apfs container: {e:?}"))?;
@@ -439,6 +447,11 @@ fn split_path(path: &str) -> Result<(String, String), String> {
 }
 
 fn run_clone(image: &str, src: &str, dst: &str) -> i32 {
+    // Also reject before path resolution; no source is opened for a write request.
+    if let Err(e) = crate::safety::require_read_only(true) {
+        eprintln!("{e}");
+        return 1;
+    }
     use apfs::FsView;
     use apfs_write::file::clone_file;
 
@@ -616,12 +629,8 @@ fn volumes_json<D: BlockDevice>(dev: &mut D) -> Result<String, String> {
         .or_else(|| volumes.iter().position(|v| !v.system));
     let mut out = String::from("{\"volumes\":[");
     for (i, v) in volumes.iter().enumerate() {
-        // A snapshot tree that cannot be read lists no snapshots; the
-        // volume itself can still be mounted.
-        let snaps = apfs_core::snapshot::list(dev, v.snap_meta_tree_oid, bsz).unwrap_or_else(|e| {
-            eprintln!("volume {}: snapshots unreadable: {e:?}", v.index);
-            Vec::new()
-        });
+        let snaps = apfs_core::snapshot::list(dev, v.snap_meta_tree_oid, bsz)
+            .map_err(|e| format!("volume {}: snapshots unreadable: {e:?}", v.index))?;
         if i > 0 {
             out.push(',');
         }

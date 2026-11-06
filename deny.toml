@@ -1,0 +1,21 @@
+[licenses]
+confidence-threshold = 0.8
+allow = [
+  "GPL-3.0-only", "GPL-3.0-or-later", "LGPL-3.0-or-later",
+  "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib",
+  "Unicode-3.0", "Unicode-DFS-2016", "CC0-1.0", "0BSD", "BSL-1.0",
+  "MPL-2.0",
+]
+
+# These exact locked crates use the deprecated SPDX identifier GPL-3.0,
+# whose meaning is GPL-3.0-only, not an unknown or additional license:
+# https://spdx.org/licenses/GPL-3.0.html
+[[licenses.exceptions]]
+name = "winfsp"
+version = "=0.13.0"
+allow = ["GPL-3.0"]
+
+[[licenses.exceptions]]
+name = "winfsp-sys"
+version = "=0.12.1"
+allow = ["GPL-3.0"]

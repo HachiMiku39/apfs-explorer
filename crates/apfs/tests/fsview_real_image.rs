@@ -27,8 +27,7 @@ fn fsview_apfs_large_fixture() {
         .map(|e| e.name)
         .collect();
     if !root.contains("dir00") {
-        eprintln!("skip: size-only fixture - regenerate gen-fixture --large");
-        return;
+        panic!("fixture has no populated tree; regenerate gen-fixture --large");
     }
     for d in 0..16 {
         assert!(

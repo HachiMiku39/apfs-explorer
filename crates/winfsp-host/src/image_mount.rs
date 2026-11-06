@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use apfs_core::block_device::{BlockError, FileBlockDeviceRw};
+use apfs_core::block_device::{BlockDevice, BlockError, FileBlockDevice, ReadOnlyBlockDevice};
 
 use crate::gpt::{self, ContainerRange, GptError};
 #[cfg(windows)]
@@ -28,11 +28,13 @@ pub enum ImageMountError {
     Gpt(GptError),
     /// File is too small to be a valid APFS container.
     TooSmall(u64),
+    InvalidContainer(apfs_core::container::ContainerError),
 }
 
 impl std::fmt::Display for ImageMountError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::InvalidContainer(e) => write!(f, "invalid APFS container: {e:?}"),
             Self::Io(e) => write!(f, "image I/O error: {e}"),
             Self::Block(e) => write!(f, "block device error: {e}"),
             Self::Gpt(e) => write!(f, "GPT parse error: {e:?}"),
@@ -64,20 +66,22 @@ impl From<GptError> for ImageMountError {
 
 /// Validate image size and locate the APFS container range via GPT.
 ///
-/// Opens the file read-write (required by `FileBlockDeviceRw`); the caller
-/// controls whether the eventual mount is writable.  If the image has no GPT
-/// protective MBR (bare single-container `.img` exported by `diskutil`),
-/// `ContainerRange { offset: 0, length: file_size }` is returned so the
-/// whole file is treated as the container.
-///
+/// Opens a read-only handle. Bare images must contain a valid APFS
+/// superblock and checkpoint; arbitrary bytes are never guessed as APFS.
 /// Returns `(file_size, ContainerRange)`.
 pub fn probe_image(path: &Path) -> Result<(u64, ContainerRange), ImageMountError> {
-    let size = std::fs::metadata(path).map_err(ImageMountError::Io)?.len();
+    let (dev, range) = open_image(path)?;
+    Ok((dev.size(), range))
+}
+
+fn open_image(
+    path: &Path,
+) -> Result<(ReadOnlyBlockDevice<FileBlockDevice>, ContainerRange), ImageMountError> {
+    let mut dev = ReadOnlyBlockDevice::new(FileBlockDevice::open(path)?);
+    let size = dev.size();
     if size < APFS_MIN_SIZE {
         return Err(ImageMountError::TooSmall(size));
     }
-
-    let mut dev = FileBlockDeviceRw::open_rw(path).map_err(ImageMountError::Block)?;
     // Disk images created by hdiutil/dd use 512-byte logical blocks.
     let range = match gpt::find_apfs_container(&mut dev, 512) {
         Ok(r) => r,
@@ -88,7 +92,11 @@ pub fn probe_image(path: &Path) -> Result<(u64, ContainerRange), ImageMountError
         },
         Err(e) => return Err(ImageMountError::Gpt(e)),
     };
-    Ok((size, range))
+    let mut bounded = crate::offset_dev::OffsetBlockDevice::new(dev, range.offset, range.length);
+    apfs_core::container::Container::open(&mut bounded)
+        .map_err(ImageMountError::InvalidContainer)?;
+    // Return the same opened handle: no path reopen between validation and mount.
+    Ok((bounded.into_inner(), range))
 }
 
 // ---------------------------------------------------------------------------
@@ -96,15 +104,15 @@ pub fn probe_image(path: &Path) -> Result<(u64, ContainerRange), ImageMountError
 // ---------------------------------------------------------------------------
 
 #[cfg(windows)]
-type ImageDev = crate::cache::CachingBlockDevice<OffsetBlockDevice<FileBlockDeviceRw>>;
+type ImageDev =
+    crate::cache::CachingBlockDevice<OffsetBlockDevice<ReadOnlyBlockDevice<FileBlockDevice>>>;
 
 /// Mount a raw disk-image file as a Windows drive letter via WinFsp.
 ///
 /// Parallels [`crate::mount::mount_apfs`] for physical drives.
 ///
 /// * `path`       - `.img` or `.dmg` file path.
-/// * `writable`   - open the file with write access and advertise a writable
-///                  volume to WinFsp.
+/// * `writable`   - rejected in OpenAPFS v0.1; retained for API compatibility.
 /// * `mountpoint` - e.g. `"Z:"`.
 #[cfg(windows)]
 pub fn mount_apfs_image(
@@ -123,16 +131,12 @@ pub fn mount_apfs_image(
     use crate::cache::CachingBlockDevice;
     use crate::mount::{ensure_winfsp_dll, io_err, ApfsFs};
 
+    crate::safety::require_read_only(writable).map_err(io_err("write policy"))?;
     ensure_winfsp_dll();
     let init = winfsp::winfsp_init().map_err(io_err("winfsp_init"))?;
     let _ = init;
 
-    // Probe size + GPT (always a read-write open; RO semantics are enforced
-    // by VolumeParams, not the file handle).
-    let (_size, range) = probe_image(path).map_err(|e| io_err("probe_image")(e.to_string()))?;
-
-    let file_dev =
-        FileBlockDeviceRw::open_rw(path).map_err(io_err("FileBlockDeviceRw::open_rw"))?;
+    let (file_dev, range) = open_image(path).map_err(io_err("open_image"))?;
 
     let dev = CachingBlockDevice::new(OffsetBlockDevice::new(file_dev, range.offset, range.length));
     // A snapshot is never written.
@@ -212,11 +216,11 @@ mod tests {
     }
 
     #[test]
-    fn bare_zeros_treated_as_bare_container() {
-        // No GPT protective MBR => falls back to full-file range.
+    fn arbitrary_bytes_are_not_guessed_as_a_container() {
         let (_f, p) = write_tmp_zeros(64 * 1024);
-        let (size, range) = probe_image(&p).unwrap();
-        assert_eq!(range.offset, 0);
-        assert_eq!(range.length, size);
+        assert!(matches!(
+            probe_image(&p),
+            Err(ImageMountError::InvalidContainer(_))
+        ));
     }
 }

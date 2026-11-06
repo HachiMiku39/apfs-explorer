@@ -1239,6 +1239,11 @@ impl<D: WritableBlockDevice + Send + 'static> FileSystemContext for ApfsFs<D> {
     ) -> winfsp::Result<Self::FileContext> {
         let _t = crate::stats::timed("open");
         guard(|| {
+            if self.read_only
+                && crate::safety::requests_mutating_open(granted_access, create_options)
+            {
+                self.refuse_if_read_only()?;
+            }
             let path = win_to_unix(file_name);
             let mut fs_guard = self
                 .fs
@@ -2611,7 +2616,7 @@ impl<D: WritableBlockDevice + Send + 'static> FileSystemContext for ApfsFs<D> {
     }
 }
 
-/// Guarantee `winfsp-x64.dll` resolves for the delay-loaded WinFsp import
+/// Guarantee the process-architecture WinFsp DLL resolves for the delay-loaded WinFsp import
 /// BEFORE the first winfsp call. WinFsp installs the DLL under its own
 /// program directory, which is not on any DLL search path the winfsp-rs
 /// loader honors (`SetDllDirectory` is ignored by its restricted
@@ -2620,7 +2625,7 @@ impl<D: WritableBlockDevice + Send + 'static> FileSystemContext for ApfsFs<D> {
 ///
 /// The executable's own directory is ALWAYS searched first, in every
 /// `LoadLibrary` mode. So we self-provision: locate the installed
-/// `winfsp-x64.dll` (via `$WINFSP_BIN` or the standard install dirs) and
+/// WinFsp DLL (via `$WINFSP_BIN` or the standard install dirs) and
 /// copy it next to the running executable if absent. Best-effort and fully
 /// automatic - no PATH, no admin, no manual setup. (A packaged build ships
 /// the DLL beside the exe anyway; this also self-heals a dev/run tree.)
@@ -2632,13 +2637,18 @@ pub(crate) fn ensure_winfsp_dll() {
         Some(d) => d,
         None => return,
     };
-    let dest = exe_dir.join("winfsp-x64.dll");
+    let Some(arch) = apfs_core::windows_arch::WindowsArch::from_rust_arch(std::env::consts::ARCH)
+    else {
+        return;
+    };
+    let dll = arch.dll_name();
+    let dest = exe_dir.join(dll);
     if dest.is_file() {
         return;
     }
     let mut sources: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(p) = std::env::var("WINFSP_BIN") {
-        sources.push(std::path::PathBuf::from(p).join("winfsp-x64.dll"));
+        sources.push(std::path::PathBuf::from(p).join(dll));
     }
     for var in ["ProgramFiles(x86)", "ProgramW6432", "ProgramFiles"] {
         if let Ok(pf) = std::env::var(var) {
@@ -2646,7 +2656,7 @@ pub(crate) fn ensure_winfsp_dll() {
                 std::path::Path::new(&pf)
                     .join("WinFsp")
                     .join("bin")
-                    .join("winfsp-x64.dll"),
+                    .join(dll),
             );
         }
     }
@@ -2698,6 +2708,7 @@ pub fn mount_apfs(
     std::sync::Arc<std::sync::atomic::AtomicBool>,
     crate::winraw::DrivePresence,
 )> {
+    crate::safety::require_read_only(writable).map_err(io_err("write policy"))?;
     // Self-provision the WinFsp DLL beside the exe before ANY winfsp call,
     // so the delay-loaded import resolves (else Win32 1285).
     ensure_winfsp_dll();

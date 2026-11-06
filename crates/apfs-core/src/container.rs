@@ -54,6 +54,9 @@ pub enum ContainerError {
     UnsupportedContainer {
         incompatible_features: u64,
     },
+    UnsupportedVolume {
+        incompatible_features: u64,
+    },
     /// A compressed file's content or size could not be produced from its
     /// decmpfs state. The cause is kept: a host decides differently for a
     /// dataless file, an encoding it cannot decode and a damaged one.
@@ -104,6 +107,7 @@ impl Container {
         let mut buf = vec![0u8; 4096];
         dev.read_at(0, &mut buf)?;
         let bootstrap = NxSuperblock::parse(&buf)?;
+        Self::validate_features(&bootstrap)?;
         // block 0 may be a stale copy; the authoritative superblock is the
         // newest valid one in the checkpoint descriptor ring (M1b).
         let superblock = crate::checkpoint::latest_superblock(dev, &bootstrap)?;
@@ -111,11 +115,7 @@ impl Container {
         // resolves them against the second device. We implement neither, so
         // every such address would silently read the wrong block. Refuse the
         // container rather than mis-address it.
-        if superblock.is_fusion() {
-            return Err(ContainerError::UnsupportedContainer {
-                incompatible_features: superblock.incompatible_features,
-            });
-        }
+        Self::validate_features(&superblock)?;
         // The block count bounds every address the container can name. A
         // device shorter than that holds only part of the container and every
         // access past its end would fail one by one, so the container is
@@ -136,6 +136,23 @@ impl Container {
             }));
         }
         Ok(Self { superblock })
+    }
+
+    fn validate_features(nx: &NxSuperblock) -> Result<(), ContainerError> {
+        if nx.xp_desc_blocks & 0x8000_0000 != 0 {
+            return Err(ContainerError::Parse(ParseError::BadField {
+                field: "checkpoint descriptor tree is unsupported",
+                value: u64::from(nx.xp_desc_blocks),
+            }));
+        }
+        // Apple NX_INCOMPAT_VERSION2. Synthetic legacy fixtures use zero.
+        // VERSION1, Fusion, and unknown bits are not implemented.
+        if nx.incompatible_features & !0x2 != 0 {
+            return Err(ContainerError::UnsupportedContainer {
+                incompatible_features: nx.incompatible_features,
+            });
+        }
+        Ok(())
     }
 
     /// Return the container UUID (`nx_uuid` from the container superblock).
@@ -189,10 +206,9 @@ impl Container {
                         .ok_or_else(oor)?,
                     &mut buf,
                 )?;
-                if let Ok(v) = crate::volume::VolumeSuperblock::parse(&buf) {
-                    if !v.is_system() {
-                        out.push(v);
-                    }
+                let v = crate::volume::VolumeSuperblock::parse(&buf)?;
+                if !v.is_system() {
+                    out.push(v);
                 }
             }
         }
@@ -220,7 +236,8 @@ impl Container {
                         .ok_or_else(oor)?,
                     &mut buf,
                 )?;
-                if let Ok(v) = crate::volume::VolumeSuperblock::parse(&buf) {
+                {
+                    let v = crate::volume::VolumeSuperblock::parse(&buf)?;
                     let role = v.volume_role();
                     let (encrypted, system) = (v.is_encrypted(), v.is_system());
                     out.push(VolumeInfo {
@@ -872,6 +889,19 @@ mod tests {
         let mut dev = MemDev(data);
         let result = Container::open(&mut dev);
         assert!(result.is_err(), "wrong object type must be rejected");
+    }
+
+    #[test]
+    fn unknown_container_feature_is_rejected_before_ring_access() {
+        let mut block = make_nx_block(3);
+        block[64..72].copy_from_slice(&(1u64 << 63).to_le_bytes());
+        let c = crate::checksum::fletcher64(&block);
+        block[..8].copy_from_slice(&c.to_le_bytes());
+        let mut dev = MemDev(block.to_vec());
+        assert!(matches!(
+            Container::open(&mut dev),
+            Err(ContainerError::UnsupportedContainer { .. })
+        ));
     }
 
     #[test]

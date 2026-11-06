@@ -18,7 +18,7 @@
 //! --image `<path>`       raw .img or .dmg file to mount (mutually exclusive with
 //!                        --drive).
 //! --mount Z:             target drive letter (default: auto-select first free).
-//! --writable             opt-in to read+write mount (default: read-only).
+//! --writable             rejected: v0.1 is read-only.
 //! --wait-for-kill        block until the process is killed instead of reading
 //!                        stdin; useful when launched detached from SSH/scripts.
 //! --volume-uuid <UUID>   select volume by UUID (hex, with or without hyphens).
@@ -38,6 +38,10 @@ fn main() {
     // On non-Windows hosts the WinFsp mount path is unavailable, but the
     // cross-platform image subcommands (snapshot/clone/volume) still work.
     let argv: Vec<String> = std::env::args().collect();
+    if argv.iter().any(|a| a == "--writable") {
+        eprintln!("{}", winfsp_host::safety::WRITE_DISABLED);
+        std::process::exit(1);
+    }
     let rest = &argv[1..];
 
     // Explicit "mount" keyword on non-Windows → helpful error.
@@ -97,6 +101,10 @@ fn main() {
     use std::sync::mpsc::channel;
 
     let argv: Vec<String> = std::env::args().collect();
+    if argv.iter().any(|a| a == "--writable") {
+        eprintln!("{}", winfsp_host::safety::WRITE_DISABLED);
+        std::process::exit(1);
+    }
     let rest = &argv[1..];
 
     // Dispatch cross-platform subcommands (snapshot/clone/volume) first.
@@ -192,14 +200,26 @@ fn run_mount(args: &[String]) {
                     eprintln!("error: --drive and --image are mutually exclusive");
                     std::process::exit(1);
                 }
-                drive = it.next().and_then(|s| s.parse().ok());
+                drive = Some(match it.next().and_then(|s| s.parse().ok()) {
+                    Some(n) => n,
+                    None => {
+                        eprintln!("error: --drive requires an unsigned disk number");
+                        std::process::exit(1);
+                    }
+                });
             }
             "--image" => {
                 if drive.is_some() {
                     eprintln!("error: --drive and --image are mutually exclusive");
                     std::process::exit(1);
                 }
-                image = it.next().map(|s| std::path::PathBuf::from(s));
+                image = Some(match it.next().filter(|s| !s.starts_with("--")) {
+                    Some(path) => std::path::PathBuf::from(path),
+                    None => {
+                        eprintln!("error: --image requires a path");
+                        std::process::exit(1);
+                    }
+                });
             }
             "--mount" => {
                 mount_arg = it.next().cloned();
@@ -479,7 +499,7 @@ MOUNT OPTIONS:
   --drive <N>           physical drive index N (from \\.\PhysicalDriveN)
   --image <path>        raw .img/.dmg file (mutually exclusive with --drive)
   --mount <X:>          target drive letter (default: first free letter)
-  --writable            opt in to read+write  (DEFAULT: read-only)
+  --writable            rejected: v0.1 is read-only
   --wait-for-kill       keep the drive mounted until this process is killed
   -h, --help            show this help and exit
 

@@ -1,86 +1,13 @@
-# Security Policy
+# Security and data safety
 
-## Scope
+OpenAPFS v0.1 is an experimental read-only tool. No command, UI action, environment variable or runtime confirmation enables source APFS writes. Physical writable handles and one-shot mutation commands are refused. The upstream writer remains available as development source and must not be treated as a validated production interface.
 
-APFS Explorer is a filesystem driver and read/write library. Security issues
-in this project can have direct consequences for **data integrity and
-availability** on APFS volumes. All reports are taken seriously.
+Use disposable disk images first. Never run inherited real_usb or physical-device write harnesses against valuable data. Real device writes require a separate explicit authorization identifying the device and operation, after image-only validation; v0.1 intentionally cannot carry that out.
 
-In-scope issues include:
+Untrusted media can contain malformed lengths, trees, checkpoints, feature flags and names. Preserve checksum and bounds failures and reject unsupported structures. Never disable validation or patch metadata to make a failing image mount. Diagnostic reports should include the commit/build, error and a minimal synthetic reproducer; remove user names, file paths, UUIDs and file content before sharing logs publicly.
 
-- Data corruption or silent data loss caused by a write-path bug.
-- Incorrect free-space accounting leading to overwritten live data.
-- Parsing bugs that cause incorrect data to be returned (confidentiality).
-- Denial-of-service conditions triggered by crafted on-disk structures.
-- Privilege escalation via the WinFsp driver interface.
+Mount helpers may run elevated or under the existing WinFsp Launcher. Keep Launcher access limited to Administrators/SYSTEM. Install WinFsp from its official signed distribution. This fork's MSI does not install WinFsp. A read-only mount does not protect against other software concurrently modifying the source: use a stable detached image or avoid concurrent mounts.
 
-Out-of-scope (non-goals of this project):
+Report suspected vulnerabilities privately through the fork owner's GitHub security reporting channel when available; otherwise request a private channel without posting sensitive media. Do not submit a whole personal disk image in an issue.
 
-- FileVault / volume encryption (not implemented, not planned).
-- Sealed volume verification.
-- Fusion Drive or container-resize operations.
-
----
-
-## Reporting a vulnerability
-
-**Do not open a public GitHub issue for security vulnerabilities.**
-
-### Preferred method - GitHub Security Advisories
-
-1. Go to the repository on GitHub.
-2. Click **Security** → **Advisories** → **Report a vulnerability**.
-3. Fill in the form with a description, steps to reproduce, and impact
-   assessment.
-4. Your report will be visible only to maintainers until disclosure.
-
-### Alternative - email
-
-Send a PGP-encrypted message to the maintainer email listed in `Cargo.toml`.
-If no PGP key is published, send plaintext to that address with
-`[SECURITY]` in the subject line.
-
----
-
-## Severity tiers
-
-| Tier | Examples | Response SLA |
-|------|----------|--------------|
-| Critical | Silent data loss, volume corruption, data read from wrong inode | Triage 24 h, fix 14 days |
-| High | Crash on malformed volume, write to wrong block range | Triage 48 h, fix 30 days |
-| Medium | Incorrect metadata (timestamps, permissions) | Triage 7 days, fix 60 days |
-| Low | Cosmetic errors, wrong error messages, availability (non-data) | Triage 14 days, fix next release |
-
----
-
-## Response process
-
-1. Maintainer acknowledges receipt within the triage window above.
-2. Maintainer confirms scope and reproduces the issue.
-3. A fix is developed on a private branch.
-4. A coordinated disclosure date is agreed with the reporter (default: 90 days
-   from report, shorter for critical issues).
-5. A patch release is published and a GitHub Security Advisory is made public.
-6. Reporter is credited in the advisory unless they request anonymity.
-
----
-
-## Known limitations
-
-- **No encryption support.** FileVault-encrypted volumes are not supported and
-  there are no plans to add support. Do not report missing encryption as a
-  security issue.
-- **Read-only mode available.** If you are uncertain about write safety on a
-  production volume, mount read-only using the `--read-only` flag.
-- **Experimental software.** This project has not undergone a formal security
-  audit. Use on irreplaceable data at your own risk; maintain backups.
-
----
-
-## Supported versions
-
-| Version | Supported |
-|---------|-----------|
-| 1.0.0-rc1 (current) | Yes |
-| 0.9.x | Critical fixes only |
-| < 0.9.0 | No |
+Do not advertise CI success as production reliability. Document remaining Windows desktop, hardware, interoperability and fault-injection gaps in TESTING.md. GPL license and third-party notices accompany artifacts; matching source is included.

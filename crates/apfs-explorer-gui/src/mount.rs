@@ -24,6 +24,20 @@
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static PENDING_MOUNTS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn mount_in_progress() -> bool {
+    PENDING_MOUNTS.load(Ordering::SeqCst) != 0
+}
+
+struct PendingMount;
+impl Drop for PendingMount {
+    fn drop(&mut self) {
+        PENDING_MOUNTS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Storage::FileSystem::GetLogicalDrives;
@@ -49,6 +63,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 pub enum MountError {
     #[error("WinFsp launchctl not found (is WinFsp installed?)")]
     LaunchctlMissing,
+    #[error("OpenAPFS v0.1 is read-only; physical disk writes are disabled")]
+    WriteDisabled,
     #[error("launchctl {0} failed: {1}")]
     Launchctl(&'static str, String),
     #[error("no free drive letter available")]
@@ -83,6 +99,11 @@ pub fn mount(
     volume: u32,
     snapshot: Option<u64>,
 ) -> Result<String, MountError> {
+    if writable {
+        return Err(MountError::WriteDisabled);
+    }
+    PENDING_MOUNTS.fetch_add(1, Ordering::SeqCst);
+    let _pending = PendingMount;
     let launchctl = locate_launchctl()?;
     let letter = first_free_drive_letter().ok_or(MountError::NoFreeLetter)?;
     let instance = instance_name(drive);
@@ -159,8 +180,22 @@ pub fn unmount(drive: u32) -> Result<(), MountError> {
         }
     }
 
-    // Drop our tracking + refresh Explorer regardless of the exact exit status
-    // (a missing instance is effectively "already unmounted").
+    // A successful launchctl status is not proof the drive disappeared.
+    // Preserve tracking and show failure while the letter remains present.
+    let tracked = crate::drives::MOUNTED
+        .lock()
+        .ok()
+        .and_then(|g| g.iter().find(|(d, _)| *d == drive).map(|(_, l)| l.clone()));
+    if let Some(letter) = tracked.as_ref() {
+        if !wait_for_unmount(letter) {
+            return Err(MountError::Launchctl(
+                "stop",
+                format!("{letter} is still mounted"),
+            ));
+        }
+    } else if !any_ok {
+        return Err(MountError::NotTracked(drive));
+    }
     persist_remove(drive);
     let removed_letter = match crate::drives::MOUNTED.lock() {
         Ok(mut g) => {
@@ -209,6 +244,27 @@ fn wait_for_drive(letter: &str, timeout_seconds: u32) -> bool {
     false
 }
 
+/// Confirm the drive letter disappeared before claiming unmount success.
+fn wait_for_unmount(letter: &str) -> bool {
+    let Some(ch) = letter
+        .as_bytes()
+        .first()
+        .copied()
+        .filter(u8::is_ascii_uppercase)
+    else {
+        return false;
+    };
+    let bit = 1u32 << (ch - b'A');
+    for _ in 0..100 {
+        let mask = unsafe { GetLogicalDrives() };
+        if mask != 0 && mask & bit == 0 {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    false
+}
+
 /// First free drive letter as `"X:"`, scanning D..=Z (A/B/C are reserved).
 fn first_free_drive_letter() -> Option<String> {
     // SAFETY: GetLogicalDrives takes no args and returns a bit-mask (0 on error).
@@ -243,15 +299,23 @@ fn combine_output(out: &std::process::Output) -> String {
     s
 }
 
-/// Resolve the path to `launchctl-x64.exe` shipped with WinFsp.
+/// Resolve the launcher matching this process; never fall back to another ABI.
 fn locate_launchctl() -> Result<String, MountError> {
-    const CANDIDATES: [&str; 2] = [
-        r"C:\Program Files (x86)\WinFsp\bin\launchctl-x64.exe",
-        r"C:\Program Files\WinFsp\bin\launchctl-x64.exe",
-    ];
-    for c in CANDIDATES {
-        if Path::new(c).exists() {
-            return Ok(c.to_string());
+    let arch = crate::windows_arch::WindowsArch::from_rust_arch(std::env::consts::ARCH)
+        .ok_or(MountError::LaunchctlMissing)?;
+    let mut bins = Vec::new();
+    if let Some(bin) = std::env::var_os("WINFSP_BIN") {
+        bins.push(PathBuf::from(bin));
+    }
+    for var in ["ProgramFiles(x86)", "ProgramW6432", "ProgramFiles"] {
+        if let Some(root) = std::env::var_os(var) {
+            bins.push(PathBuf::from(root).join("WinFsp").join("bin"));
+        }
+    }
+    for bin in bins {
+        let path = bin.join(arch.launchctl_name());
+        if path.is_file() {
+            return Ok(path.to_string_lossy().into_owned());
         }
     }
     Err(MountError::LaunchctlMissing)

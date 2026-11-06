@@ -243,49 +243,17 @@ function renderDetected(drives) {
     const actions = document.createElement('div');
     actions.className = 'card-actions';
 
-    // Mode toggle: read-only (default, safe) vs writable. Writable is an
-    // explicit opt-in. A snapshot (picked above) always mounts read-only.
-    let writable = false;
-    const seg = document.createElement('div');
-    seg.className = 'segmented';
-    seg.setAttribute('role', 'group');
-    const roBtn = document.createElement('button');
-    roBtn.type = 'button';
-    roBtn.className = 'seg active';
-    roBtn.textContent = 'Read-only';
-    const rwBtn = document.createElement('button');
-    rwBtn.type = 'button';
-    rwBtn.className = 'seg warn';
-    rwBtn.textContent = 'Writable';
-    rwBtn.title = 'Read+write. Snapshots the volume has stay as they are.';
-    roBtn.addEventListener('click', () => {
-      writable = false; roBtn.classList.add('active'); rwBtn.classList.remove('active');
-    });
-    rwBtn.addEventListener('click', () => {
-      writable = true; rwBtn.classList.add('active'); roBtn.classList.remove('active');
-    });
-    if (snapshotPicked) {
-      // A snapshot is never written.
-      rwBtn.disabled = true;
-      rwBtn.title = 'A snapshot mounts read-only.';
-    }
-    seg.appendChild(roBtn);
-    seg.appendChild(rwBtn);
-    actions.appendChild(seg);
+    // v0.1 has no write control; the backend also rejects writable IPC.
+    const writable = false;
+    const modeLabel = document.createElement('span');
+    modeLabel.className = 'badge badge-ok';
+    modeLabel.textContent = t('Read-only');
+    actions.appendChild(modeLabel);
 
     const mountBtn = document.createElement('button');
     mountBtn.className = 'btn btn-primary';
-    mountBtn.textContent = 'Mount';
+    mountBtn.textContent = t('Mount');
     mountBtn.addEventListener('click', async () => {
-      if (writable) {
-        const ok = await confirmDialog({
-          title: 'Mount writable?',
-          message: 'Changes will be written to the disk. Snapshots the volume '
-            + 'has keep the files as they were when each was taken.',
-          confirmText: 'Mount writable',
-        });
-        if (!ok) return;
-      }
       const p = choices[d.index] || { volume: 0, snapshot: '' };
       mountClicked(d.index, writable && !p.snapshot, p.volume, p.snapshot);
     });
@@ -299,7 +267,7 @@ function renderDetected(drives) {
 function renderMounted(drives) {
   const live = drives.filter(d => d.mounted);
   if (live.length === 0) {
-    renderEmpty(mountedEl, 'Nothing mounted yet.');
+    renderEmpty(mountedEl, t('Nothing mounted yet.'));
     return;
   }
   clearChildren(mountedEl);
@@ -325,7 +293,7 @@ function renderMounted(drives) {
     const rw = mode.writable === true;
     const badge = document.createElement('span');
     badge.className = 'badge ' + (rw ? 'badge-warn' : 'badge-ok');
-    badge.textContent = mode.snapshot ? 'Snapshot' : (rw ? 'Writable' : 'Read-only');
+    badge.textContent = mode.snapshot ? t('Snapshot') : t(rw ? 'Writable' : 'Read-only');
     title.appendChild(badge);
     body.appendChild(title);
     const meta = document.createElement('div');
@@ -340,13 +308,13 @@ function renderMounted(drives) {
     actions.className = 'card-actions';
     const openBtn = document.createElement('button');
     openBtn.className = 'btn btn-outline';
-    openBtn.textContent = 'Open';
+    openBtn.textContent = t('Open');
     openBtn.addEventListener('click', () => openClicked(d.letter));
     actions.appendChild(openBtn);
 
     const unmountBtn = document.createElement('button');
     unmountBtn.className = 'btn btn-destructive';
-    unmountBtn.textContent = 'Unmount';
+    unmountBtn.textContent = t('Unmount');
     unmountBtn.addEventListener('click', () => unmountClicked(d.index));
     actions.appendChild(unmountBtn);
 

@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>APFS Explorer</title>
+    <title>OpenAPFS</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="app-header">
       <div class="app-title">
-        <h1>APFS Explorer</h1>
+        <h1>OpenAPFS</h1>
         <span id="app-version" class="app-version"></span>
       </div>
       <button id="refresh-btn" class="btn btn-ghost icon-btn" title="Refresh drives" aria-label="Refresh">
@@ -18,22 +18,25 @@
     </header>
 
     <main class="content">
+      <p data-i18n="v0.1 · Read-only access">v0.1 · Read-only access</p>
+      <p data-i18n="Unmount before disconnecting.">Unmount before disconnecting.</p>
+      <label>Language / 语言 <select id="language"><option value="en">English</option><option value="zh">简体中文</option></select></label>
       <section>
-        <h2 class="section-title">Detected drives</h2>
+        <h2 class="section-title" data-i18n="Detected drives">Detected drives</h2>
         <div id="detected" class="drive-list">
-          <div class="empty">Scanning…</div>
+          <div class="empty" data-i18n="Scanning…">Scanning…</div>
         </div>
       </section>
 
       <section>
-        <h2 class="section-title">Mounted</h2>
+        <h2 class="section-title" data-i18n="Mounted">Mounted</h2>
         <div id="mounted" class="drive-list">
-          <div class="empty">Nothing mounted yet.</div>
+          <div class="empty" data-i18n="Nothing mounted yet.">Nothing mounted yet.</div>
         </div>
       </section>
     </main>
 
-    <footer class="status-bar" id="status-bar">Ready.</footer>
+    <footer class="status-bar" id="status-bar" data-i18n="Ready.">Ready.</footer>
 
     <!-- In-app confirmation modal (replaces the native confirm() chrome). -->
     <div id="modal-overlay" class="modal-overlay" hidden>
@@ -41,12 +44,13 @@
         <h3 id="modal-title" class="modal-title"></h3>
         <p id="modal-message" class="modal-message"></p>
         <div class="modal-actions">
-          <button id="modal-cancel" type="button" class="btn btn-outline">Cancel</button>
-          <button id="modal-confirm" type="button" class="btn btn-primary">Confirm</button>
+          <button id="modal-cancel" type="button" class="btn btn-outline" data-i18n="Cancel">Cancel</button>
+          <button id="modal-confirm" type="button" class="btn btn-primary" data-i18n="Confirm">Confirm</button>
         </div>
       </div>
     </div>
 
+    <script src="i18n.js"></script>
     <script src="main.js"></script>
   </body>
 </html>
